@@ -19,9 +19,10 @@
 
 터미널에서 [Claude Code](https://claude.com/claude-code) 를 켜고 **이걸 붙여넣으세요:**
 
-> https://github.com/beingcognitive/stock_portfolio 를 클론해서 실행해줘.
-> 가상환경(venv) 만들고 `requirements.txt` 설치한 뒤, 우선 예시 데이터(`transactions.example.yaml`)로
-> 대시보드를 띄워줘. 그다음 내 실제 거래를 `transactions.yaml` 에 어떻게 넣는지 알려줘.
+> https://github.com/beingcognitive/stock_portfolio 를 클론해서 설치·실행해줘.
+> venv 만들고 `requirements.txt` 설치한 뒤, 예시 데이터로 **서버를 백그라운드로 띄우고**
+> 대시보드 URL을 **브라우저로 열어줘**(5000 포트가 막혀 있으면 다른 포트로). 그다음 내 실제
+> 거래를 `transactions.yaml` 에 넣는 방법을 이어서 알려줘.
 
 클론·가상환경·의존성·실행까지 알아서 처리하고, 본인 거래 원장을 채우는 방법까지 안내합니다.
 (원장 형식은 파일 맨 위 필드 설명과 아래 [거래 내역 수정](#거래-내역-수정-단일-소스) 섹션 참고.)
@@ -38,9 +39,10 @@ python3 -m venv .venv
 cp transactions.example.yaml transactions.yaml
 #   transactions.yaml 이 없으면 예시 데이터로 그대로 실행됩니다.
 
-# 대시보드 띄우기
+# 대시보드 띄우기 (Windows는 .venv\Scripts\python app.py)
 .venv/bin/python app.py
 # → 브라우저에서 http://127.0.0.1:5000 열기
+#   macOS에서 5000이 안 열리면(AirPlay가 점유) 다른 포트로: .venv/bin/python app.py --port 5001
 ```
 
 ### 거래 내역 채우기 (YAML 손으로 안 짜도 됨)
@@ -48,12 +50,19 @@ cp transactions.example.yaml transactions.yaml
 `transactions.yaml` 을 직접 정리할 필요 없습니다. 증권사 거래내역을 그대로
 (텍스트·CSV·표 캡처) Claude Code에 주고 **이렇게 말하세요:**
 
-> 내 증권사 거래내역이야. [여기 붙여넣기 / 캡처 첨부]
-> 이걸 `transactions.yaml` 형식(`lots` / `closed` / `cash`)으로 정리해줘 —
-> 형식은 `transactions.example.yaml` 과 아래 "거래 내역 수정" 섹션을 참고해.
+> 내 증권사 거래내역이야 (↓ 아래 줄을 지우고 텍스트를 붙이거나, 스샷 파일을 이 메시지에 드래그):
+> [거래내역 여기]
+> 이걸 `transactions.yaml` 형식(`lots` / `closed` / `cash`)으로 정리해줘. 형식은
+> `transactions.example.yaml` 과 아래 "거래 내역 수정" 섹션 참고. 단:
+> - `ticker`·6자리 `krx_code`·`region`(국내자산=국내 / 해외자산=해외)을 **모르면 추측 말고 물어봐** (코드가 틀리면 가격 조회가 깨짐).
+> - 매도 건은 실제 매도금액(`proceeds`)과 **매수 회차(언제·얼마에 나눠 샀는지)** 도 필요해 — 없으면 물어봐.
+> - 다 채운 뒤 종목↔코드를 표로 보여주고 내가 확인하게 해줘.
 
-Claude Code가 보유·청산·현금을 분류하고 매수 회차(tranches)까지 맞춰 채워줍니다.
+Claude Code가 보유·청산·현금을 분류해 채워주되, 모르는 값은 추측 대신 되물어 조용한 오류를 줄입니다.
 이후 매매가 생기면 그 내역만 다시 주면 됩니다.
+
+🔒 데이터는 본인 PC에서만 처리되고 `transactions.yaml` 은 `.gitignore` 로 저장소에 올라가지 않습니다.
+단, Claude Code에 붙여넣는 텍스트는 전송되니 계좌번호·주민번호 같은 식별정보는 빼고 거래 내역만 주세요.
 
 ## 화면 구성
 
@@ -62,7 +71,7 @@ Claude Code가 보유·청산·현금을 분류하고 매수 회차(tranches)까
   총자산에 합산만 합니다. 아래 줄에 확정수익(실현)과 총수익(미실현+실현)을 따로 표시합니다.
 - **계좌 필터 (알약)** : 보유 종목이 있는 계좌만 알약으로 노출. 클릭하면 그 계좌로 필터,
   '전체'로 해제합니다. (현금 전용 계좌는 보여줄 내역이 없어 필터에서 제외)
-- **가치 곡선** : 최초 매수(2025-08)부터 일별 평가금액 vs 투자원금.
+- **가치 곡선** : 최초 매수일부터 일별 평가금액 vs 투자원금.
   매도한 종목은 **보유했던 기간 동안만** 곡선에 반영되고, 매도 후에는 확정수익으로 집계됩니다.
   특정일 전 종목을 매도하면 그날 곡선이 푹 꺼지는데, 이는 실제 현금화를 그대로 보여주는 것입니다.
 - **계좌별 보유 테이블** : 종목별 수량/평균단가/현재가(또는 기준일 종가)/손익/수익률.
