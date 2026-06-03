@@ -1,33 +1,36 @@
-# 주식 포트폴리오 트래커
+# Stock Portfolio Tracker
 
-거래 원장(매수·매도 내역)을 기반으로 현재 보유 평가, 확정수익(실현 손익),
-그리고 올해 초부터 오늘까지의 일별 가치 곡선을 보여주는 로컬 웹 대시보드.
+A local web dashboard that turns your trade ledger (buys and sells) into current holdings
+valuation, realized P/L, and a daily net-worth curve from your first purchase to today.
 
-> 종목 일별 종가는 [pykrx](https://github.com/sharebook-kr/pykrx) (KRX) 와
-> [yfinance](https://github.com/ranaroussi/yfinance) 로 가져옵니다. 한국 ETF에 맞춰져 있습니다.
+> Built for Korean (KRX) ETFs. Daily closes come from [pykrx](https://github.com/sharebook-kr/pykrx) (KRX)
+> and [yfinance](https://github.com/ranaroussi/yfinance).
+> The dashboard's on-screen labels are in Korean — this README maps the key terms to English in
+> [What's on screen](#whats-on-screen).
 
-## 미리보기
+## Preview
 
-![포트폴리오 대시보드](docs/screenshot.png)
+![Portfolio dashboard](docs/screenshot.png)
 
-> 위 화면은 저장소에 포함된 **예시 데이터**(`transactions.example.yaml`)로 생성된 것이며, 실제 보유가 아닙니다.
-> 직접 실행하면 본인 거래 원장(`transactions.yaml`) 기준으로 동일한 화면이 나타납니다.
+> The screenshot uses the bundled **sample data** (`transactions.example.yaml`), not real holdings.
+> Run it yourself and the same screen renders from your own ledger (`transactions.yaml`).
 
-## 설치 · 실행
+## Install · Run
 
-### Claude Code에게 맡기기 (요즘 방식)
+### Let Claude Code do it (the easy way)
 
-터미널에서 [Claude Code](https://claude.com/claude-code) 를 켜고 **이걸 붙여넣으세요:**
+Open [Claude Code](https://claude.com/claude-code) in a terminal and **paste this:**
 
-> https://github.com/beingcognitive/stock_portfolio 를 클론해서 설치·실행해줘.
-> venv 만들고 `requirements.txt` 설치한 뒤, 예시 데이터로 **서버를 백그라운드로 띄우고**
-> 대시보드 URL을 **브라우저로 열어줘**(포트가 막혀 있으면 다른 포트로). 그다음 내 실제
-> 거래를 `transactions.yaml` 에 넣는 방법을 이어서 알려줘.
+> Clone and run https://github.com/beingcognitive/stock_portfolio for me.
+> Create a venv, install `requirements.txt`, then start the dashboard **in the background** with the
+> sample data and **open the URL in my browser** (use another port if it's taken). Then show me how
+> to put my own trades into `transactions.yaml`.
 
-클론·가상환경·의존성·실행까지 알아서 처리하고, 본인 거래 원장을 채우는 방법까지 안내합니다.
-(원장 형식은 파일 맨 위 필드 설명과 아래 [거래 내역 수정](#거래-내역-수정-단일-소스) 섹션 참고.)
+It handles the clone, venv, dependencies, and run, then walks you through filling in your ledger.
+(For the format, see the field notes at the top of the file and the
+[Editing the ledger](#editing-the-ledger-single-source) section below.)
 
-### 직접 설치하려면
+### Manual install
 
 ```bash
 git clone https://github.com/beingcognitive/stock_portfolio.git
@@ -35,147 +38,152 @@ cd stock_portfolio
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 
-# 본인 거래 입력: 예시 파일을 복사해 채우기 (transactions.yaml 은 git 추적 제외됨)
+# Add your trades: copy the sample and fill it in (transactions.yaml is gitignored)
 cp transactions.example.yaml transactions.yaml
-#   transactions.yaml 이 없으면 예시 데이터로 그대로 실행됩니다.
+#   If transactions.yaml is absent, it just runs on the sample data.
 
-# 대시보드 띄우기 (Windows는 .venv\Scripts\python app.py)
+# Start the dashboard (Windows: .venv\Scripts\python app.py)
 .venv/bin/python app.py
-# → 브라우저에서 http://127.0.0.1:8000 열기 (포트 충돌 시: app.py --port 8001)
+# → open http://127.0.0.1:8000 in your browser (port clash: app.py --port 8001)
 ```
 
-### 거래 내역 채우기 (YAML 손으로 안 짜도 됨)
+### Filling in your trades (no hand-writing YAML)
 
-`transactions.yaml` 을 직접 정리할 필요 없습니다. 증권사 거래내역을 그대로
-(텍스트·CSV·표 캡처) Claude Code에 주고 **이렇게 말하세요:**
+You don't have to format `transactions.yaml` by hand. Give your brokerage transaction history
+as-is (text, CSV, or a screenshot of the table) to Claude Code and **say:**
 
-> 내 증권사 거래내역이야 (↓ 아래 줄을 지우고 텍스트를 붙이거나, 스샷 파일을 이 메시지에 드래그):
-> [거래내역 여기]
-> 이걸 `transactions.yaml` 형식(`lots` / `closed` / `cash`)으로 정리해줘. 형식은
-> `transactions.example.yaml` 과 아래 "거래 내역 수정" 섹션 참고. 단:
-> - `ticker`·6자리 `krx_code`·`region`(국내자산=국내 / 해외자산=해외)을 **모르면 추측 말고 물어봐** (코드가 틀리면 가격 조회가 깨짐).
-> - 매도 건은 실제 매도금액(`proceeds`)과 **매수 회차(언제·얼마에 나눠 샀는지)** 도 필요해 — 없으면 물어봐.
-> - 다 채운 뒤 종목↔코드를 표로 보여주고 내가 확인하게 해줘.
+> Here's my brokerage transaction history (↓ replace the line below with the text, or drag a screenshot in):
+> [transactions here]
+> Turn this into `transactions.yaml` (`lots` / `closed` / `cash`). Follow the format in
+> `transactions.example.yaml` and the "Editing the ledger" section of the README. Rules:
+> - For each ETF set `ticker`, the 6-digit `krx_code`, and `region` (`국내` for domestic-asset ETFs,
+>   `해외` for foreign-asset ones). **If you're unsure, ask me — don't guess** (a wrong code breaks price lookups).
+> - For sells, I also need the actual sale proceeds (`proceeds`) and the **buy tranches (when and how
+>   much I bought in each lot)** — ask if they're missing.
+> - When done, show me a name↔code table so I can verify.
 
-Claude Code가 보유·청산·현금을 분류해 채워주되, 모르는 값은 추측 대신 되물어 조용한 오류를 줄입니다.
-이후 매매가 생기면 그 내역만 다시 주면 됩니다.
+Claude Code sorts your holdings, closed trades, and cash, and asks instead of guessing on unknown
+values, which avoids silent errors. After that, just hand it any new trades.
 
-🔒 데이터는 본인 PC에서만 처리되고 `transactions.yaml` 은 `.gitignore` 로 저장소에 올라가지 않습니다.
-단, Claude Code에 붙여넣는 텍스트는 전송되니 계좌번호·주민번호 같은 식별정보는 빼고 거래 내역만 주세요.
+🔒 Everything runs on your own machine and `transactions.yaml` is gitignored (never pushed). But text
+you paste into Claude Code is transmitted, so strip out account numbers / national IDs and share only the trades.
 
-## 화면 구성
+## What's on screen
 
-- **자산 흐름(요약)** : 투자원금 → (평가이익/손실, 미실현) → **평가금액** → (+현금) → 총자산 으로
-  이어 읽는 가로 흐름입니다. 핵심은 **평가금액**(노란 테두리로 강조)이고, 현금은 부가 정보로
-  총자산에 합산만 합니다. 아래 줄에 확정수익(실현)과 총수익(미실현+실현)을 따로 표시합니다.
-- **계좌 필터 (알약)** : 보유 종목이 있는 계좌만 알약으로 노출. 클릭하면 그 계좌로 필터,
-  '전체'로 해제합니다. (현금 전용 계좌는 보여줄 내역이 없어 필터에서 제외)
-- **가치 곡선** : 최초 매수일부터 일별 평가금액 vs 투자원금.
-  매도한 종목은 **보유했던 기간 동안만** 곡선에 반영되고, 매도 후에는 확정수익으로 집계됩니다.
-  특정일 전 종목을 매도하면 그날 곡선이 푹 꺼지는데, 이는 실제 현금화를 그대로 보여주는 것입니다.
-- **계좌별 보유 테이블** : 종목별 수량/평균단가/현재가(또는 기준일 종가)/손익/수익률.
-- **확정 수익 테이블** : 매도·만기 완료된 거래와 누적 확정수익.
+On-screen labels are Korean; below, the English term comes first with the Korean label in parentheses.
 
-## 인터랙션
+- **Asset flow (summary)** : reads left to right as Cost basis (투자원금) → (unrealized P/L) →
+  **Market value (평가금액)** → (+ cash) → Net worth (총자산). **Market value** is the focus
+  (yellow border); cash is just added on to reach net worth. A line below shows realized P/L (확정수익)
+  and total gain (unrealized + realized) separately.
+- **Account filter (pills)** : only accounts that hold something appear as pills. Click to filter to
+  that account; **전체** (All) clears it. (Cash-only accounts have nothing to show, so they're left off.)
+- **Value curve** : daily market value vs. cost basis from your first purchase onward. A sold position
+  counts **only while you held it**; after the sale it moves to realized P/L. If you sold everything
+  before a given day, the curve drops to (near) zero that day — the real cash-out, shown as-is.
+- **Per-account holdings table** : per ticker — shares / average cost / current (or as-of-date close)
+  price / P/L / return %.
+- **Realized P/L table** : completed sells/expirations and cumulative realized gain.
 
-- **그래프 점 클릭** : 그 날짜 기준으로 요약·보유 테이블·확정수익이 모두 바뀝니다.
-  (그날 보유 중이던 종목 — 이후 매도한 종목 포함 — 을 그날 종가로 평가)
-  선택한 날은 **흰 테두리 점 + 옅은 점선 세로선**으로 표시되고, 마우스를 올리면 그 지점에
-  작은 링이 나타납니다. 상단 배너의 **"현재로 돌아가기"** 로 오늘 시점으로 복귀.
-- **계좌 알약(pill) 클릭** : 해당 계좌로 필터. 여러 개를 클릭하면 합산
-  (예: 계좌A + 계좌B). 차트·테이블·확정수익이 선택에 맞춰 갱신됩니다.
-  '전체'를 누르거나 아무것도 선택하지 않으면 전체.
-- **연도 선택 (차트 우상단)** : 전체 / 연도 버튼으로 곡선을 해당 연도로 확대해 봅니다.
-  버튼은 데이터에 있는 연도에서 자동 생성됩니다. Y축은 항상 0부터.
+## Interactions
 
-모든 계산은 `/api/data` 한 번 받아 브라우저에서 즉시 처리하므로 클릭/필터에 지연이 없습니다.
+- **Click a point on the graph** : the summary, holdings table, and realized P/L all switch to that
+  date. (Positions held that day — including ones later sold — are valued at that day's close.) The
+  selected day shows a **white-bordered dot + faint dotted vertical line**; hovering shows a small ring.
+  Use **현재로 돌아가기** (Back to today) in the top banner to return.
+- **Click an account pill** : filter to that account. Click several to combine (e.g. account A + B).
+  Chart, tables, and realized P/L follow the selection. **전체** (All), or nothing selected, means everything.
+- **Year selector (top-right of chart)** : All / per-year buttons zoom the curve to that year. Buttons
+  are generated from the years present in your data. The Y-axis always starts at 0.
 
-## 데이터 갱신 / 캐시 동작
+All computation runs in the browser from a single `/api/data` fetch, so clicks/filters are instant.
 
-- **원장(lots/closed)** : 매 요청마다 `transactions.yaml` 을 새로 읽습니다.
-  따라서 종목을 편집한 뒤 **브라우저만 새로고침해도** 바로 반영됩니다(서버 재시작 불필요).
-- **가격** : 과거 종가는 변하지 않으므로 캐시해 재사용하고, 다음 경우에만 다시 받습니다.
-  - 서버 첫 기동 (전 구간 수집)
-  - 마지막 가격 갱신 후 30분 경과
-  - **새로고침 버튼** (서버 캐시를 무시하고 강제 갱신)
-- **새로고침 버튼** 은 `/api/data?force=1` 로 최신가를 다시 받습니다. 이때 전체가 아니라
-  **현재 보유 중인 티커의 최근 7일치만** 다시 받습니다(이미 매도한 종목은 가격 이력이
-  전부 과거라 갱신 불필요). 갱신 동안 버튼이 "갱신 중…" 으로 비활성화됩니다.
-- **장중(09:00–15:30 KST)** : "종가 기준" 대시보드라 장 마감 후 가장 정확합니다.
-  장중에는 당일 마지막 점이 잠정값(yfinance는 약 15분 지연, pykrx는 마감 전 당일 종가
-  미제공)이며 마감 후 확정됩니다. 과거 날짜는 항상 확정값입니다.
+## Data refresh / caching
 
-## 거래 내역 수정 (단일 소스)
+- **Ledger (lots/closed)** : `transactions.yaml` is re-read on every request, so after editing it just
+  **refresh the browser** — no server restart needed.
+- **Prices** : past closes don't change, so they're cached and reused; refetched only when:
+  - the server first starts (full history),
+  - 30 minutes have passed since the last price refresh, or
+  - you hit the **Refresh button** (ignores the server cache and forces an update).
+- The **Refresh button** calls `/api/data?force=1` and refetches **only the last 7 days for
+  currently-held tickers** (already-sold tickers have only past, fixed prices). It shows
+  **갱신 중…** (refreshing…) while it works.
+- **During market hours (09:00–15:30 KST)** : this is a "closing-price" dashboard, most accurate after
+  the close. Intraday, the last point is provisional (yfinance lags ~15 min; pykrx gives no intraday
+  close before the close) and settles after close. Past dates are always final.
 
-모든 데이터는 `transactions.yaml` 한 파일에서 옵니다 (없으면 `transactions.example.yaml`).
-이 파일은 개인 정보라 `.gitignore` 로 저장소에서 제외됩니다.
+## Editing the ledger (single source)
 
-- `lots` : 현재 보유 중인 매수 건. 사고팔 때 여기에 줄을 추가/삭제하세요.
-  계좌별 현재 보유는 (계좌, 티커) 기준으로 자동 합산됩니다.
-- `closed` : 매도(또는 만기 청산) 완료 거래. 종목 단위로 묶되 실제 매수
-  **회차(tranches)** 를 날짜별로 보관합니다. 덕분에 투자원금 곡선이 회차별
-  매수일에 정확히 누적되고(앞당겨 잡히지 않음), 보유 기간 평가도 회차 수량으로
-  계산됩니다. 확정수익 = `proceeds`(시트의 실제 매도금액) − 회차 cost 합.
-- `cash` (선택) : 투자 외 예비현금. 매입원금/평가금액/수익률에는 섞지 않고
-  **총자산(평가 + 현금)** 과 자산 흐름에만 합산됩니다. 회차(date)로 기록하므로 현금을
-  종목에 투입하면 음수 `amount` 한 줄 + 매수 `lot` 한 줄로 잔액이 자동 정합됩니다.
-  계좌처럼 다루지만 보유 종목이 없으면 필터 알약에는 나오지 않습니다.
+All data comes from one file, `transactions.yaml` (or `transactions.example.yaml` if it's absent).
+This file is personal, so it's excluded from the repo via `.gitignore`.
 
-파일 맨 위에 필드 설명이 있습니다.
+- `lots` : open buy positions. Add/remove lines as you buy and sell. Current holdings per account are
+  auto-aggregated by (account, ticker).
+- `closed` : completed sells (or expiries). Grouped per ticker, but each buy **tranche** is kept by
+  date. That way the cost-basis curve accrues at each tranche's actual buy date (not pulled forward),
+  and the held-period valuation uses the tranche's shares. Realized P/L = `proceeds` (the actual sale
+  amount) − sum of tranche costs.
+- `cash` (optional) : reserve cash outside your investments. Kept out of cost basis / market value /
+  return %, and only added into **net worth (market value + cash)** and the asset flow. Recorded by
+  date, so moving cash into a position reconciles automatically: one negative `amount` line + one buy
+  `lot`. Treated like an account, but with no holdings it won't appear as a filter pill.
 
-## 가격 출처
+Field notes are at the top of the file.
 
-- 현재가/과거 종가: KRX 숫자 6자리 코드는 `pykrx`로 먼저 조회,
-  영숫자 코드(예: `0185L0`)나 실패 시 `yfinance`(`.KS`)로 폴백.
-- 모든 종목(보유·청산 포함)에 티커가 있어 실제 종가로 평가합니다.
-  특정일 종가를 못 가져오면 직전 거래일 종가로 forward-fill, 그래도 없으면
-  해당 회차의 매수단가로 대체합니다.
+## Price sources
 
-## 가치 곡선 콘솔 출력
+- Current/past closes: 6-digit numeric KRX codes are looked up via `pykrx` first; alphanumeric codes
+  (e.g. `0185L0`) or failures fall back to `yfinance` (`.KS`).
+- Every position (held or closed) has a ticker, so it's valued at actual closes. If a given day's close
+  is unavailable, it's forward-filled from the prior trading day's close; failing that, the tranche's
+  buy price is used.
+
+## Value curve to the console
 
 ```bash
 .venv/bin/python app.py --curve
 ```
 
-## 파일 구성
+## Files
 
-| 파일 | 역할 |
+| File | Role |
 |------|------|
-| `transactions.yaml` | 거래 원장 (편집 대상): `lots` + `closed` + `cash` |
-| `prices.py` | 가격 조회 — 현재가 + 과거 종가 시계열 (pykrx + yfinance) |
-| `portfolio.py` | 보유 산출, 확정수익 집계, 일별 가치 곡선, `/api/data` 데이터셋 |
-| `app.py` | Flask 웹 서버 (`/` 대시보드, `/api/data`) |
-| `templates/index.html` | 대시보드 화면 (모든 계산을 브라우저에서 수행) |
+| `transactions.yaml` | the trade ledger (what you edit): `lots` + `closed` + `cash` |
+| `prices.py` | price lookup — current price + historical close series (pykrx + yfinance) |
+| `portfolio.py` | holdings, realized-P/L aggregation, daily value curve, the `/api/data` dataset |
+| `app.py` | Flask web server (`/` dashboard, `/api/data`) |
+| `templates/index.html` | the dashboard (all rendering/recompute happens in the browser) |
 
-## 구현 노트 (주요 결정·가정)
+## Implementation notes (key decisions & assumptions)
 
-이 프로젝트를 만들며 내린 핵심 결정과 데이터 가정을 기록합니다.
-
-- **거래 원장 단일 소스** : 정적 보유 스냅샷이 아니라 매수/매도 원장을 두고
-  현재 보유·확정수익·일별 곡선을 모두 여기서 산출합니다. 청산 거래는 종목별로
-  묶되 매수 **회차(tranches)** 를 날짜·수량·금액으로 보관합니다.
-- **투자원금(매입원금) 의미** : "그날 보유 중인 종목의 매입원가 합"입니다.
-  매수 시 회차 날짜에 더해지고, 매도 시 그 원가가 빠지며 차익은 확정수익으로
-  이동합니다. 즉 누적 입금액이 아니라 **현재 보유의 원가**라서 매도일에 내려갑니다.
-- **회차 분해로 앞당겨짐 제거** : 청산 종목을 한 덩어리(첫 매수일에 전액)로 잡으면
-  투자원금이 실제보다 앞당겨져 곡선 초반이 왜곡됩니다. 회차별로 나눠 실제 매수일에
-  누적되도록 했습니다.
-- **곡선 시작점** : 보유 이력에서 가장 오래된 매수일부터 그립니다.
-- **확정수익 정확도** : 매도금액(`proceeds`)을 알면 그 값을 그대로 사용해
-  확정수익 = 매도금액 − 회차 원가 합 이 정확히 맞습니다.
-- **추정이 필요한 경우** :
-  - 수량을 모르면 매입금액 ÷ 체결단가를 반올림(정수)해 쓸 수 있습니다 (오차 보통 0.1% 미만).
-  - 매도금액을 모르는 청산 거래는 매도일 종가(또는 개장 무렵 매도라면 시가)로
-    `proceeds` 를 추정할 수 있습니다. 정확한 체결금액이 생기면 교체하세요.
-  - 배당은 복잡도를 줄이기 위해 확정수익에서 제외하는 것을 권장합니다(원하면 별도 관리).
-- **현금은 별도 버킷** : 예비현금은 매입원금/평가금액/수익률 계산에 섞지 않고
-  **총자산(평가 + 현금)** 과 자산 흐름에만 더합니다. 투자 성과(수익률, 손익)와 잔액(총자산)이라는
-  서로 다른 두 이야기를 분리해, 같은 숫자가 두 번 나오지 않도록 한 것입니다.
-- **전일대비(일변량) 정의** : 요약의 평가이익 노드와 계좌 합계 아래의 "전일대비" 줄은
-  **어제와 오늘 둘 다 보유한 종목만**, 연속 보유 수량(`min(어제, 오늘)`)으로 직전 거래일 종가→당일
-  종가 재평가한 **순수 가격 변동**입니다. 당일 매수분(어제 미보유)과 매도분(오늘 미보유)을 대칭으로
-  빼서 현금흐름이 섞이지 않습니다. 누적 손익(매입가 대비)이나 확정수익(실현)과는 **별개의 지표**이며,
-  무거래일에는 보유분 가격 변동과 정확히 일치합니다. 분모는 전일 보유 평가액이라 일일 %가 됩니다.
-  당일 신규 매수 종목은 합계에 안 잡히므로 그 종목 행의 전일대비 화살표(▲▼)도 숨깁니다(일관성).
-- **브라우저 캐시 방지** : 코드 갱신 후 옛 JS 가 새 데이터를 읽어 깨지는 문제를
-  막기 위해 응답에 `Cache-Control: no-store` 를 붙였습니다.
+- **Single source of truth = the ledger** : not a static holdings snapshot but a buy/sell ledger, from
+  which current holdings, realized P/L, and the daily curve are all derived. Closed trades are grouped
+  per ticker but keep their buy **tranches** by date/shares/amount.
+- **What "cost basis" (투자원금) means** : the summed buy cost of positions held *on that day*. It rises
+  at each tranche's buy date and falls when you sell (the gain moves to realized P/L). So it's the cost
+  of *current* holdings, not cumulative deposits — which is why it drops on a sell day.
+- **Tranche split avoids pull-forward** : lumping a closed position into one block (full amount at the
+  first buy date) pulls cost basis earlier than reality and distorts the start of the curve. Splitting
+  by tranche accrues it at the real buy dates.
+- **Curve start** : drawn from the oldest buy date in your history.
+- **Realized-P/L accuracy** : when the sale amount (`proceeds`) is known, it's used directly, so
+  realized P/L = proceeds − sum of tranche costs is exact.
+- **When you have to estimate** :
+  - If you don't know the share count, round (cost ÷ fill price) to an integer (error usually < 0.1%).
+  - For a closed trade with an unknown sale amount, estimate `proceeds` from the sell-date close (or the
+    open, if sold near the open). Replace it once you have the exact figure.
+  - Dividends are best left out of realized P/L to keep it simple (track separately if you want).
+- **Cash is a separate bucket** : reserve cash isn't mixed into cost basis / market value / return %,
+  only into **net worth (market value + cash)** and the asset flow. This keeps two different stories —
+  investment performance (return, P/L) and balance (net worth) — apart, so the same number never shows twice.
+- **Day-over-day (daily change) definition** : the "전일대비" line under the unrealized-P/L node and each
+  account total is the **pure price move of positions held on *both* yesterday and today**, valued at the
+  continuously-held share count (`min(yesterday, today)`), from the prior trading day's close to today's.
+  Today's buys (not held yesterday) and sells (not held today) are excluded symmetrically, so cash flows
+  don't leak in. It's a **separate metric** from cumulative P/L (vs. cost) and from realized P/L, and on
+  a no-trade day it equals the price move of your holdings. The denominator is yesterday's held value,
+  making it a daily %. A ticker bought today isn't in the total, so its row's day-over-day arrow (▲▼) is
+  hidden too (for consistency).
+- **No browser cache** : a `Cache-Control: no-store` header is set so stale JS doesn't read new data and
+  break after a code update.
