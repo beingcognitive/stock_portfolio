@@ -1,6 +1,6 @@
 """포트폴리오 대시보드 웹 서버 (Flask).
 
-실행: python app.py  →  http://127.0.0.1:5000
+실행: python app.py  →  http://127.0.0.1:8000
 프런트엔드가 /api/data 한 번으로 곡선·기준일 테이블·계좌 필터를 모두 계산한다.
 """
 
@@ -62,7 +62,7 @@ def api_data():
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--port", type=int, default=5000)
+    parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--curve", action="store_true", help="가치 곡선을 콘솔에 출력하고 종료")
     args = parser.parse_args()

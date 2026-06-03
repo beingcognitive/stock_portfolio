@@ -21,7 +21,7 @@
 
 > https://github.com/beingcognitive/stock_portfolio 를 클론해서 설치·실행해줘.
 > venv 만들고 `requirements.txt` 설치한 뒤, 예시 데이터로 **서버를 백그라운드로 띄우고**
-> 대시보드 URL을 **브라우저로 열어줘**(5000 포트가 막혀 있으면 다른 포트로). 그다음 내 실제
+> 대시보드 URL을 **브라우저로 열어줘**(포트가 막혀 있으면 다른 포트로). 그다음 내 실제
 > 거래를 `transactions.yaml` 에 넣는 방법을 이어서 알려줘.
 
 클론·가상환경·의존성·실행까지 알아서 처리하고, 본인 거래 원장을 채우는 방법까지 안내합니다.
@@ -41,8 +41,7 @@ cp transactions.example.yaml transactions.yaml
 
 # 대시보드 띄우기 (Windows는 .venv\Scripts\python app.py)
 .venv/bin/python app.py
-# → 브라우저에서 http://127.0.0.1:5000 열기
-#   macOS에서 5000이 안 열리면(AirPlay가 점유) 다른 포트로: .venv/bin/python app.py --port 5001
+# → 브라우저에서 http://127.0.0.1:8000 열기 (포트 충돌 시: app.py --port 8001)
 ```
 
 ### 거래 내역 채우기 (YAML 손으로 안 짜도 됨)
