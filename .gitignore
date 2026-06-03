@@ -2,6 +2,7 @@
 transactions.yaml
 history.db
 자산배치_세금전략.md
+HANDOFF.md
 
 # Python
 __pycache__/
