@@ -13,10 +13,24 @@
 > 위 화면은 저장소에 포함된 **예시 데이터**(`transactions.example.yaml`)로 생성된 것이며, 실제 보유가 아닙니다.
 > 직접 실행하면 본인 거래 원장(`transactions.yaml`) 기준으로 동일한 화면이 나타납니다.
 
-## 실행
+## 설치 · 실행
+
+### Claude Code에게 맡기기 (요즘 방식)
+
+터미널에서 [Claude Code](https://claude.com/claude-code) 를 켜고 **이걸 붙여넣으세요:**
+
+> https://github.com/beingcognitive/stock_portfolio 를 클론해서 실행해줘.
+> 가상환경(venv) 만들고 `requirements.txt` 설치한 뒤, 우선 예시 데이터(`transactions.example.yaml`)로
+> 대시보드를 띄워줘. 그다음 내 실제 거래를 `transactions.yaml` 에 어떻게 넣는지 알려줘.
+
+클론·가상환경·의존성·실행까지 알아서 처리하고, 본인 거래 원장을 채우는 방법까지 안내합니다.
+(원장 형식은 파일 맨 위 필드 설명과 아래 [거래 내역 수정](#거래-내역-수정-단일-소스) 섹션 참고.)
+
+### 직접 설치하려면
 
 ```bash
-# 최초 1회
+git clone https://github.com/beingcognitive/stock_portfolio.git
+cd stock_portfolio
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 
@@ -28,6 +42,18 @@ cp transactions.example.yaml transactions.yaml
 .venv/bin/python app.py
 # → 브라우저에서 http://127.0.0.1:5000 열기
 ```
+
+### 거래 내역 채우기 (YAML 손으로 안 짜도 됨)
+
+`transactions.yaml` 을 직접 정리할 필요 없습니다. 증권사 거래내역을 그대로
+(텍스트·CSV·표 캡처) Claude Code에 주고 **이렇게 말하세요:**
+
+> 내 증권사 거래내역이야. [여기 붙여넣기 / 캡처 첨부]
+> 이걸 `transactions.yaml` 형식(`lots` / `closed` / `cash`)으로 정리해줘 —
+> 형식은 `transactions.example.yaml` 과 아래 "거래 내역 수정" 섹션을 참고해.
+
+Claude Code가 보유·청산·현금을 분류하고 매수 회차(tranches)까지 맞춰 채워줍니다.
+이후 매매가 생기면 그 내역만 다시 주면 됩니다.
 
 ## 화면 구성
 
@@ -126,11 +152,7 @@ cp transactions.example.yaml transactions.yaml
 - **회차 분해로 앞당겨짐 제거** : 청산 종목을 한 덩어리(첫 매수일에 전액)로 잡으면
   투자원금이 실제보다 앞당겨져 곡선 초반이 왜곡됩니다. 회차별로 나눠 실제 매수일에
   누적되도록 했습니다.
-- **곡선 시작 2025-08** : 가장 오래된 매수일(2025-08-04)부터 그립니다.
-- **현금화 딥은 그대로 노출** : 특정일 전 종목을 매도하면 그날 평가액이 0(또는 거의
-  0)으로 떨어지는데, 보정/보간하지 않고 실제 현금화를 그대로 보여줍니다.
-  (예: 2026-03-04 전쟁 이벤트로 대거 매도 → 다음날 재매수). 앞뒤 빈 구간만
-  잘라내고 **중간의 0 일은 유지**하므로, 계좌 필터에서도 딥이 보입니다.
+- **곡선 시작점** : 보유 이력에서 가장 오래된 매수일부터 그립니다.
 - **확정수익 정확도** : 매도금액(`proceeds`)을 알면 그 값을 그대로 사용해
   확정수익 = 매도금액 − 회차 원가 합 이 정확히 맞습니다.
 - **추정이 필요한 경우** :
@@ -149,12 +171,3 @@ cp transactions.example.yaml transactions.yaml
   당일 신규 매수 종목은 합계에 안 잡히므로 그 종목 행의 전일대비 화살표(▲▼)도 숨깁니다(일관성).
 - **브라우저 캐시 방지** : 코드 갱신 후 옛 JS 가 새 데이터를 읽어 깨지는 문제를
   막기 위해 응답에 `Cache-Control: no-store` 를 붙였습니다.
-
-## 향후 아이디어
-
-- **차분 모드 토글** (미구현, 의도적 보류) : 일일 변량 신호 — 현재가 옆 `▲▼`, 계좌 합계·요약의
-  "전일대비" 줄 — 을 한 번에 숨겨 **누적 손익과 자산 곡선만** 남기는 토글. 자주 볼수록 단기 노이즈
-  상의 손실을 더 자주 마주쳐 조급해지고 나쁜 결정(저점 매도·과매매)을 하게 되는
-  **근시안적 손실회피(myopic loss aversion)** 를 줄이려는 장치입니다. 평소엔 켜두고 리밸런싱처럼
-  *작정하고 볼 때만* 끄는 용도 — 도구의 정보 해상도를 사용자가 고를 수 있게 합니다.
-  (구현은 토글 상태에 따라 `.dir` / `.day-chg` / `.op-day` 요소를 숨기는 CSS 클래스 정도면 충분.)
