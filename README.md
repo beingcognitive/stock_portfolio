@@ -1,12 +1,12 @@
 # Stock Portfolio Tracker
 
 A local web dashboard that turns your trade ledger (buys and sells) into current holdings
-valuation, realized P/L, and a daily net-worth curve from your first purchase to today.
+valuation, realized P/L, and a daily market-value curve from your first purchase to today.
 
-> Built for Korean (KRX) ETFs. Daily closes come from [pykrx](https://github.com/sharebook-kr/pykrx) (KRX)
-> and [yfinance](https://github.com/ranaroussi/yfinance).
-> The dashboard's on-screen labels are in Korean — this README maps the key terms to English in
-> [What's on screen](#whats-on-screen).
+> Built for Korean-listed (KRX) ETFs — including ones that hold overseas assets. Daily closes come
+> from [pykrx](https://github.com/sharebook-kr/pykrx) (KRX) and [yfinance](https://github.com/ranaroussi/yfinance).
+> **The dashboard UI is in Korean.** This README maps the key terms to English (see
+> [What's on screen](#whats-on-screen)); for the rest, your browser's auto-translate works fine.
 
 ## Preview
 
@@ -47,6 +47,8 @@ cp transactions.example.yaml transactions.yaml
 # → open http://127.0.0.1:8000 in your browser (port clash: app.py --port 8001)
 ```
 
+> On Windows, replace `.venv/bin/` with `.venv\Scripts\` in the commands above.
+
 ### Filling in your trades (no hand-writing YAML)
 
 You don't have to format `transactions.yaml` by hand. Give your brokerage transaction history
@@ -65,8 +67,12 @@ as-is (text, CSV, or a screenshot of the table) to Claude Code and **say:**
 Claude Code sorts your holdings, closed trades, and cash, and asks instead of guessing on unknown
 values, which avoids silent errors. After that, just hand it any new trades.
 
+Don't know an ETF's KRX code? Give Claude the fund's English name or ISIN and ask it to find the
+6-digit KRX listing code — then check it against the name↔code table it shows you.
+
 🔒 Everything runs on your own machine and `transactions.yaml` is gitignored (never pushed). But text
-you paste into Claude Code is transmitted, so strip out account numbers / national IDs and share only the trades.
+you paste into Claude Code is transmitted, so strip out account numbers and personal ID numbers
+(SSN, resident registration number, etc.) and share only the trades.
 
 ## What's on screen
 
@@ -84,6 +90,12 @@ On-screen labels are Korean; below, the English term comes first with the Korean
 - **Per-account holdings table** : per ticker — shares / average cost / current (or as-of-date close)
   price / P/L / return %.
 - **Realized P/L table** : completed sells/expirations and cumulative realized gain.
+
+**On-screen labels (Korean → English):** 종목 = name · 수량 = shares · 평균단가 = avg cost ·
+현재가 = current price · 매입금액 = cost · 평가금액 = market value · 손익 = P/L · 수익률 = return % ·
+합계 = total · 전일대비 = vs. prior day · 확정 수익 (실현) = realized P/L · 매수일 / 매도일 = buy / sell date ·
+매도금액 = proceeds · 새로고침 = Refresh · 전체 = All · 현재로 돌아가기 = Back to today.
+(Or just let your browser auto-translate the page.)
 
 ## Interactions
 
@@ -129,7 +141,15 @@ This file is personal, so it's excluded from the repo via `.gitignore`.
   date, so moving cash into a position reconciles automatically: one negative `amount` line + one buy
   `lot`. Treated like an account, but with no holdings it won't appear as a filter pill.
 
-Field notes are at the top of the file.
+A few per-row fields, in English:
+- `ticker` is the Yahoo Finance symbol (6-digit code + `.KS`); `krx_code` is the bare KRX short code
+  for pykrx (usually 6 digits, occasionally alphanumeric like `0185L0`). The digits repeat on purpose — both are needed.
+- `region` (`국내` = domestic-asset, `해외` = overseas-asset) is a **display-only tag**: copy the exact
+  Korean value from the example — it does *not* affect prices or any calculation.
+- Account names (`계좌A`…) and cash labels (`케이뱅크`, `예비현금`) are just placeholders — rename them to
+  anything, in any language (they show verbatim as filter pills).
+
+The file's own header comments describe each field (in Korean); the English summary above covers the same ground.
 
 ## Price sources
 
