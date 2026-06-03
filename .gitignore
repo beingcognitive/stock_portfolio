@@ -1,0 +1,15 @@
+# 개인 포트폴리오 데이터 (절대 공개 금지) — Personal holdings, never publish
+transactions.yaml
+history.db
+자산배치_세금전략.md
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# OS / tooling
+.DS_Store
+.gstack/

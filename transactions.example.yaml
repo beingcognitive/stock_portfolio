@@ -1,0 +1,103 @@
+# 거래 원장 예시 (sample transaction ledger)
+# ===========================================================================
+# 이 파일을 transactions.yaml 로 복사한 뒤 본인 거래로 채우세요.
+#   cp transactions.example.yaml transactions.yaml
+# transactions.yaml 이 있으면 그 파일을, 없으면 이 예시 파일을 사용합니다.
+# (transactions.yaml 은 .gitignore 로 저장소에서 제외됩니다.)
+#
+# 아래 수치는 모두 임의의 예시값입니다 (실제 보유 아님).
+# README 의 스크린샷도 이 예시 데이터로 생성되었습니다.
+# ---------------------------------------------------------------------------
+#   - lots   : 현재 보유 중인 매수 건. (계좌, 티커) 기준으로 자동 합산됩니다.
+#   - cash   : 투자 외 예비현금 (선택).
+#   - closed : 매도/청산 완료 거래. 종목 단위로 묶되 매수 회차(tranches)를 보관합니다.
+#
+# lots 필드   : account, name, ticker, krx_code, region, date, shares, price
+# closed 필드 : account, name, ticker, krx_code, region, sell_date,
+#               proceeds(매도금액), sell_price, tranches:[{date, shares, cost}]
+#   * 매입원금 = tranches 의 cost 합 / 확정수익 = proceeds - 매입원금
+#   * 보유 기간 평가 = 회차 수량 × 해당일 종가
+#
+# ticker: 야후 파이낸스 심볼(KRX 6자리 + ".KS"). krx_code: pykrx 조회용 6자리.
+# ===========================================================================
+
+# 계좌 표시 순서 (선택) : 여기 나열한 계좌가 이 순서대로 앞에 오고, 나머지는
+#   아래 등장 순서대로 뒤에 붙습니다. 본인 계좌명에 맞게 바꾸세요.
+account_order: [계좌A, 계좌B, 계좌C]
+
+# ---------------------------------------------------------------------------
+# 현재 보유 (OPEN LOTS) — 3개 계좌 예시 (일반 / 연금 / ISA 성격)
+# ---------------------------------------------------------------------------
+lots:
+  # ===== 계좌A (일반 위탁계좌 성격) =====
+  - { account: 계좌A, name: KODEX 200,        ticker: "069500.KS", krx_code: "069500", region: 국내, date: 2025-08-05, shares: 80,  price: 112000 }
+  - { account: 계좌A, name: KODEX 200,        ticker: "069500.KS", krx_code: "069500", region: 국내, date: 2025-11-10, shares: 40,  price: 121000 }
+  - { account: 계좌A, name: TIGER 미국S&P500,  ticker: "360750.KS", krx_code: "360750", region: 해외, date: 2025-09-02, shares: 300, price: 23800 }
+  - { account: 계좌A, name: KODEX 코스닥150,   ticker: "229200.KS", krx_code: "229200", region: 국내, date: 2026-01-15, shares: 250, price: 19300 }
+
+  # ===== 계좌B (연금계좌 성격) =====
+  - { account: 계좌B, name: TIGER 미국나스닥100, ticker: "133690.KS", krx_code: "133690", region: 해외, date: 2025-08-20, shares: 50,  price: 176000 }
+  - { account: 계좌B, name: TIGER 미국S&P500,   ticker: "360750.KS", krx_code: "360750", region: 해외, date: 2025-10-06, shares: 200, price: 25100 }
+  - { account: 계좌B, name: KoAct 배당성장액티브, ticker: "476850.KS", krx_code: "476850", region: 국내, date: 2026-02-02, shares: 300, price: 21500 }
+
+  # ===== 계좌C (ISA 성격) =====
+  - { account: 계좌C, name: KoAct 배당성장액티브, ticker: "476850.KS", krx_code: "476850", region: 국내, date: 2025-09-10, shares: 500, price: 19800 }
+  - { account: 계좌C, name: KODEX 200,         ticker: "069500.KS", krx_code: "069500", region: 국내, date: 2026-03-03, shares: 30,  price: 124000 }
+
+# ---------------------------------------------------------------------------
+# 현금 (CASH) — 투자 외 예비자금. 매입원금/평가금액/수익률에는 섞지 않고
+#   '총자산(평가 + 현금)' 과 자산배분에만 반영됩니다. account 는 계좌처럼 필터됩니다.
+#   amount 는 증감(delta) 이며 기준일까지 누적 합산됩니다.
+# ---------------------------------------------------------------------------
+cash:
+  - { account: 케이뱅크, name: 예비현금, date: 2025-08-05, amount: 15000000 }
+  - { account: 케이뱅크, name: 예비현금, date: 2026-01-12, amount: 10000000 }
+
+# ---------------------------------------------------------------------------
+# 청산 완료 (CLOSED / REALIZED) — 확정수익 = proceeds − tranches.cost 합
+# ---------------------------------------------------------------------------
+closed:
+  - account: 계좌A
+    name: KODEX 코스닥150
+    ticker: "229200.KS"
+    krx_code: "229200"
+    region: 국내
+    sell_date: 2025-12-15
+    sell_price: 20500
+    proceeds: 3075000
+    tranches:
+      - { date: 2025-09-10, shares: 100, cost: 1900000 }
+      - { date: 2025-10-01, shares: 50,  cost: 950000 }
+
+  - account: 계좌A
+    name: TIGER 미국S&P500
+    ticker: "360750.KS"
+    krx_code: "360750"
+    region: 해외
+    sell_date: 2026-02-10
+    sell_price: 26500
+    proceeds: 3975000
+    tranches:
+      - { date: 2025-09-01, shares: 150, cost: 3600000 }
+
+  - account: 계좌B
+    name: TIGER 미국나스닥100
+    ticker: "133690.KS"
+    krx_code: "133690"
+    region: 해외
+    sell_date: 2026-03-04
+    sell_price: 195000
+    proceeds: 3900000
+    tranches:
+      - { date: 2025-08-20, shares: 20, cost: 3400000 }
+
+  - account: 계좌C
+    name: KoAct 배당성장액티브
+    ticker: "476850.KS"
+    krx_code: "476850"
+    region: 국내
+    sell_date: 2026-01-20
+    sell_price: 21000
+    proceeds: 4200000
+    tranches:
+      - { date: 2025-10-05, shares: 200, cost: 4400000 }

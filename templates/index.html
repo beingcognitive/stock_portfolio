@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>포트폴리오 트래커</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #181b22; --line: #262b35;
+    --txt: #e7eaf0; --muted: #8b93a3;
+    --up: #2ecc71; --down: #ff5b6e; --accent: #ffa726;
+    --up-dim: #6fcf97; --down-dim: #cf6f7a;  /* 당일 변량용: 누적 손익보다 채도 한 단계 낮춤 */
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--txt);
+    font-family: -apple-system, "Apple SD Gothic Neo", "Pretendard", sans-serif;
+    padding: 24px; max-width: 1180px; margin: 0 auto;
+  }
+  header { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+  h1 { font-size: 20px; margin: 0 0 2px; }
+  .as-of { color: var(--muted); font-size: 12px; }
+  .btns { margin-left: auto; display: flex; gap: 8px; }
+  button {
+    background: var(--panel); color: var(--txt); border: 1px solid var(--line);
+    padding: 7px 14px; border-radius: 8px; cursor: pointer; font-size: 13px;
+  }
+  button:hover { border-color: var(--accent); }
+  /* 자산 흐름(flow): 투자원금 → 평가금액 → 총자산 으로 이어 읽는다 */
+  .flow { display: flex; align-items: stretch; flex-wrap: wrap; gap: 10px; margin: 18px 0; }
+  .flow-node {
+    flex: 1 1 0; min-width: 150px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 16px; display: flex; flex-direction: column; justify-content: center;
+  }
+  .flow-node .label { color: var(--muted); font-size: 12px; }
+  .flow-node .val { font-size: 20px; font-weight: 700; margin-top: 4px; }
+  .flow-node.total { flex: 1.4 1 0; border-color: var(--accent); }
+  .flow-node.total .val { font-size: 26px; }
+  /* 연결 연산자(+37.7% / +현금) */
+  .flow-op {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 3px; flex: 0 0 auto; padding: 0 8px; color: var(--muted);
+  }
+  .flow-op .oplabel { font-size: 13px; color: var(--muted); }
+  .flow-op .opval { white-space: nowrap; font-weight: 700; font-size: 15px; }
+  .flow-op .opval.big { font-size: 19px; }
+  .flow-op .op-sub { font-size: 14px; font-weight: 600; }   /* 큰 손익 옆 수익률 (한 줄) */
+  .flow-op .op-day { font-size: 12px; font-weight: 400; white-space: nowrap; }  /* 오늘자 변량 */
+  /* 누적 수익 한 줄 (실현 · 총수익) */
+  .flow-foot {
+    flex: 1 0 100%; display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: baseline;
+    border-top: 1px solid var(--line); margin-top: 2px; padding-top: 12px; font-size: 13px;
+  }
+  .flow-foot .fk { color: var(--muted); }
+  .flow-foot .ft { margin-left: auto; font-weight: 700; }
+  @media (max-width: 720px) {
+    .flow { flex-direction: column; }
+    .flow-node, .flow-node.total { flex: 1 1 auto; }
+    .flow-op { padding: 6px 0; }
+    .flow-foot .ft { margin-left: 0; }
+  }
+  /* 계좌 필터 알약 바 */
+  .acct-filter { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: -4px 0 18px; }
+  .acct-filter .flabel { color: var(--muted); font-size: 12px; margin-right: 2px; }
+  .pill {
+    display: inline-flex; align-items: baseline; gap: 6px; cursor: pointer;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 999px;
+    padding: 6px 13px; font-size: 13px; transition: border-color .12s, background .12s;
+  }
+  .pill:hover { border-color: var(--muted); }
+  .pill.on { border-color: var(--accent); background: #20242e; }
+  .pill .pv { color: var(--muted); font-size: 12px; }
+  .pill.on .pv { color: var(--accent); }
+  .up { color: var(--up); } .down { color: var(--down); }
+  /* 당일 변량(전일 대비)은 누적 손익과 같은 초록/빨강을 쓰되 채도를 낮춰 시각적으로 격하한다. */
+  .dir.up, .day-chg.up, .op-day.up { color: var(--up-dim); }
+  .dir.down, .day-chg.down, .op-day.down { color: var(--down-dim); }
+  .chart-wrap { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 22px; }
+  /* 차트 헤더 한 줄: 좌=계좌 라벨 · 중앙=레전드 · 우=연도 필터 (Chart.js 내부 title/legend 대체) */
+  .chart-top { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+  .chart-acc { color: var(--muted); font-size: 12px; }
+  .chart-legend { margin: 0 auto; display: inline-flex; gap: 18px; font-size: 12px; }
+  .chart-legend .lg { display: inline-flex; align-items: center; gap: 6px; }
+  .chart-legend .sw { display: inline-block; width: 18px; border-top: 2px solid; vertical-align: middle; }
+  .chart-legend .sw-val { border-top-color: var(--accent); }
+  .chart-legend .sw-cost { border-top-color: var(--muted); border-top-style: dashed; }
+  .year-sel { display: inline-flex; gap: 6px; }
+  .yr { padding: 4px 12px; font-size: 12px; border-radius: 999px; }
+  .yr.on { border-color: var(--accent); color: var(--accent); background: #20242e; }
+  .chart-hint { color: var(--muted); font-size: 12px; margin-top: 8px; }
+  .asof-bar {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    background: #20242e; border: 1px solid var(--accent); border-radius: 10px;
+    padding: 10px 14px; margin: 16px 0; font-size: 13px;
+  }
+  .asof-bar.hidden { display: none; }
+  .asof-bar b { font-size: 15px; }
+  h2 { font-size: 15px; margin: 26px 0 10px; display: flex; align-items: baseline; gap: 10px; }
+  h2 .acc-meta { font-size: 13px; font-weight: 400; color: var(--muted); margin-left: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 9px 10px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  td.name, th.name { text-align: left; white-space: normal; }
+  .tag { font-size: 11px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--line); color: var(--muted); margin-left: 6px; }
+  .tag.sold { border-color: var(--down); color: var(--down); }
+  /* 현재가 옆 전일 대비 등락(화살표+%): 셀의 up/down 색상을 그대로 상속받아 표시 */
+  .dir { font-size: 11px; margin-left: 5px; white-space: nowrap; }
+  /* '전일대비' 라벨: 변량 색과 무관하게 항상 muted (누적 손익과 의미 구분) */
+  .day-lbl { color: var(--muted); font-weight: 400; }
+  tr.total-row td { font-weight: 700; border-top: 2px solid var(--line); border-bottom: none; }
+  /* 합계 손익 아래: 그날 하루의 평가손익 변량 (전일 종가 대비) */
+  .day-chg { font-size: 11px; font-weight: 400; margin-top: 3px; white-space: nowrap; }
+  .loading { color: var(--muted); padding: 40px; text-align: center; }
+  .section-note { color: var(--muted); font-size: 12px; margin: -4px 0 10px; }
+</style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>포트폴리오 트래커</h1>
+      <div class="as-of" id="asOf">불러오는 중…</div>
+    </div>
+    <div class="btns">
+      <button id="refreshBtn" onclick="reload(true)">새로고침</button>
+    </div>
+  </header>
+
+  <div class="flow" id="summary"></div>
+
+  <div class="acct-filter" id="acctFilter"></div>
+
+  <div class="chart-wrap">
+    <div class="chart-top">
+      <span class="chart-acc" id="chartAcc"></span>
+      <span class="chart-legend">
+        <span class="lg"><i class="sw sw-val"></i>평가금액</span>
+        <span class="lg"><i class="sw sw-cost"></i>투자원금</span>
+      </span>
+      <div class="year-sel" id="yearSel"></div>
+    </div>
+    <canvas id="chart" height="90"></canvas>
+    <div class="chart-hint" id="chartHint"></div>
+  </div>
+
+  <div class="asof-bar hidden" id="asofBar"></div>
+
+  <div id="accounts"><div class="loading">불러오는 중…</div></div>
+
+  <h2 id="realizedHeader" style="display:none">확정 수익 (실현)</h2>
+  <div class="section-note" id="realizedNote" style="display:none"></div>
+  <div id="realized"></div>
+
+<script>
+const won = n => "₩" + Math.round(n).toLocaleString("ko-KR");
+const signWon = n => (n >= 0 ? "+" : "") + won(n);
+const pct = n => (n >= 0 ? "+" : "") + n.toFixed(1) + "%";
+const cls = n => n >= 0 ? "up" : "down";
+
+let DATA, DAYS, DAYIDX, FFILL, ACC_ORDER;
+let selectedAccounts = new Set();   // 비어 있으면 전체
+let selectedDate = null;            // null = 마지막 거래일(현재)
+let selectedYear = null;            // null = 전체 기간
+let chart;
+
+// ---- 데이터 적재 + 전처리 ----
+// force=true → 서버 캐시를 무시하고 최신 가격(최근 구간)을 다시 받는다 (새로고침 버튼).
+async function reload(force = false) {
+  const btn = document.getElementById("refreshBtn");
+  if (force && btn) { btn.disabled = true; btn.textContent = "갱신 중…"; }
+  try {
+    const url = "/api/data?t=" + Date.now() + (force ? "&force=1" : "");
+    const r = await fetch(url);
+    DATA = await r.json();
+  } finally {
+    if (force && btn) { btn.disabled = false; btn.textContent = "새로고침"; }
+  }
+  DAYS = DATA.trading_days;
+  // 가격을 못 받아 거래일이 비면 잘못된 값(매도 종목을 보유로 집계)이 나올 수 있어 차단.
+  if (!DAYS || !DAYS.length) {
+    document.getElementById("asOf").textContent =
+      "⚠ 가격 데이터를 불러오지 못했습니다 (일시적 조회 실패일 수 있음). 잠시 후 새로고침하세요.";
+    document.getElementById("accounts").innerHTML =
+      '<div class="loading">가격 데이터를 불러오지 못했습니다. 잠시 후 다시 시도하세요.</div>';
+    return;
+  }
+  DAYIDX = {}; DAYS.forEach((d, i) => DAYIDX[d] = i);
+  // 티커별 forward-fill 가격 배열 (거래일 그리드 정렬)
+  FFILL = {};
+  for (const tk in DATA.prices) {
+    const m = DATA.prices[tk]; const arr = new Array(DAYS.length); let last = null;
+    for (let i = 0; i < DAYS.length; i++) { if (m[DAYS[i]] !== undefined) last = m[DAYS[i]]; arr[i] = last; }
+    FFILL[tk] = arr;
+  }
+  document.getElementById("asOf").textContent = "기준: " + DATA.as_of + " · 종가 기준";
+  // 계좌 표시 순서: 원장의 account_order(선택)를 우선 적용하고, 목록에 없는 계좌는 원래(YAML) 순서로 뒤에 붙인다.
+  //   실제 계좌명은 개인 원장(transactions.yaml)에만 두고 공개 코드에는 두지 않는다.
+  const ACC_PREF = DATA.account_order || [];
+  ACC_ORDER = [
+    ...ACC_PREF.filter(a => DATA.accounts.includes(a)),
+    ...DATA.accounts.filter(a => !ACC_PREF.includes(a)),
+  ];
+  renderAll();
+}
+
+const inFilter = acc => selectedAccounts.size === 0 || selectedAccounts.has(acc);
+const effectiveDate = () => selectedDate || DAYS[DAYS.length - 1];
+const isToday = () => !selectedDate || selectedDate === DAYS[DAYS.length - 1];
+
+function priceOn(tk, dateStr) {
+  const arr = FFILL[tk]; if (!arr) return null;
+  const i = DAYIDX[dateStr]; if (i === undefined) return null;
+  return arr[i];
+}
+
+// 직전 거래일(달력상). 화살표(종목)와 합계 day-change가 같은 기준을 쓰도록 단일 소스로 둔다.
+function prevTradingDay(dateStr) {
+  const i = DAYIDX[dateStr];
+  return (i === undefined || i <= 0) ? null : DAYS[i - 1];
+}
+
+// 종목 종가가 '직전 거래일 종가' 대비 등락 → {cls, arrow:'▲'/'▼'/'', pct}.
+//   heldPrev === false (직전 거래일 미보유 = 당일 신규매수)면 화살표 숨김 → 합계 교집합과 일관.
+function priceDayMove(tk, dateStr, heldPrev) {
+  if (heldPrev === false) return { cls: "", arrow: "", pct: null };
+  const prevDay = prevTradingDay(dateStr);
+  if (!prevDay) return { cls: "", arrow: "", pct: null };
+  const cur = priceOn(tk, dateStr), prev = priceOn(tk, prevDay);
+  if (cur == null || prev == null || prev <= 0) return { cls: "", arrow: "", pct: null };
+  const chg = (cur - prev) / prev * 100;
+  if (cur > prev) return { cls: "up", arrow: "▲", pct: chg };
+  if (cur < prev) return { cls: "down", arrow: "▼", pct: chg };
+  return { cls: "", arrow: "", pct: null };
+}
+
+// 그날 하루의 평가손익 변량: 직전 거래일에도·당일에도 보유한 종목(account|ticker 교집합)만,
+//   '연속 보유 수량 min(전일, 당일)'으로 직전→당일 종가 재평가한다. 당일 매수분(전일 미보유)과
+//   매도분(당일 미보유)을 대칭으로 제외해, 현금흐름이 아닌 순수 가격 변동만 잡는다.
+//   prevRows = 직전 거래일 보유, todayRows = 당일 보유 (둘 다 positionsOnDate 산출, 필터 적용됨).
+function dayChange(prevRows, todayRows, dateStr) {
+  const prevDay = prevTradingDay(dateStr);
+  if (!prevDay) return null;
+  const todayShares = {};
+  for (const r of todayRows) todayShares[r.account + "|" + r.ticker] = r.shares;
+  let chg = 0, prevVal = 0, any = false;
+  for (const r of prevRows) {
+    const ts = todayShares[r.account + "|" + r.ticker];
+    if (ts == null) continue;                  // 당일 미보유(전량/부분 매도된 키) → 제외
+    const shares = Math.min(r.shares, ts);      // 연속 보유 수량
+    if (shares <= 0) continue;
+    const cur = priceOn(r.ticker, dateStr), prev = priceOn(r.ticker, prevDay);
+    if (cur == null || prev == null || prev <= 0) continue;
+    chg += shares * (cur - prev);
+    prevVal += shares * prev;
+    any = true;
+  }
+  if (!any || prevVal <= 0) return null;
+  return { chg, pct: chg / prevVal * 100 };
+}
+
+// 그날 하루 변량 표시 (계좌 합계·상단 요약 공용). 손익 칸엔 ₩, 수익률 칸엔 %를 따로 붙여
+//   각 컬럼의 단위와 일변량을 정렬한다. 상단 요약은 한 노드라 둘을 합친 dayChangeText 사용.
+const dayArrow = dc => !dc ? "" : dc.chg > 0 ? "▲ " : dc.chg < 0 ? "▼ " : "";
+const dayChangeText = dc => !dc ? "" : `(${signWon(dc.chg)}, ${dayArrow(dc)}${pct(dc.pct)})`;
+const dayChangeWon = dc => !dc ? "" : `(${signWon(dc.chg)})`;  // 화살표는 % 쪽에만 ('전일대비'+부호+색으로 방향 충분)
+const dayChangePct = dc => !dc ? "" : `(${dayArrow(dc)}${pct(dc.pct)})`;
+const dayChangeCls = dc => !dc ? "" : dc.chg > 0 ? "up" : dc.chg < 0 ? "down" : "";
+
+// 특정일에 보유 중이던 포지션 목록 (계좌 필터 적용)
+function positionsOnDate(dateStr) {
+  const agg = {};
+  const add = (acc, name, ticker, region, shares, cost, value) => {
+    const k = acc + "|" + ticker;
+    if (!agg[k]) agg[k] = { account: acc, name, ticker, region, shares: 0, cost: 0, value: 0 };
+    agg[k].shares += shares; agg[k].cost += cost; agg[k].value += value;
+  };
+  for (const l of DATA.lots) {
+    if (!inFilter(l.account) || l.date > dateStr) continue;
+    const p = priceOn(l.ticker, dateStr);
+    add(l.account, l.name, l.ticker, l.region, l.shares, l.shares * l.price,
+        l.shares * (p != null ? p : l.price));
+  }
+  for (const c of DATA.closed) {
+    if (!inFilter(c.account) || dateStr >= c.sell_date) continue;
+    const p = priceOn(c.ticker, dateStr);
+    for (const tr of c.tranches) {
+      if (tr.date > dateStr) continue;
+      const fb = tr.shares ? tr.cost / tr.shares : 0;
+      add(c.account, c.name, c.ticker, c.region, tr.shares, tr.cost,
+          tr.shares * (p != null ? p : fb));
+    }
+  }
+  const rows = Object.values(agg).map(r => ({
+    ...r, avg_price: r.shares ? r.cost / r.shares : 0,
+    price: r.shares ? r.value / r.shares : 0,
+    pl: r.value - r.cost, return_pct: r.cost ? (r.value - r.cost) / r.cost * 100 : 0,
+    sold: false,
+  }));
+  return rows;
+}
+
+function accountValueOnDate(acc, dateStr) {
+  let v = 0;
+  for (const l of DATA.lots) if (l.account === acc && l.date <= dateStr) {
+    const p = priceOn(l.ticker, dateStr); v += l.shares * (p != null ? p : l.price);
+  }
+  for (const c of DATA.closed) if (c.account === acc && dateStr < c.sell_date) {
+    const p = priceOn(c.ticker, dateStr);
+    for (const tr of c.tranches) if (tr.date <= dateStr) {
+      const fb = tr.shares ? tr.cost / tr.shares : 0;
+      v += tr.shares * (p != null ? p : fb);
+    }
+  }
+  for (const c of (DATA.cash || [])) if (c.account === acc && c.date <= dateStr) v += c.amount;
+  return v;
+}
+
+// 기준일까지 누적된 현금 (계좌 필터 적용). 매입원금/평가금액과는 분리해 다룬다.
+function cashOnDate(dateStr) {
+  let v = 0;
+  for (const c of (DATA.cash || [])) {
+    if (!inFilter(c.account) || c.date > dateStr) continue;
+    v += c.amount;
+  }
+  return v;
+}
+
+// 기준일까지의 확정수익 (계좌 필터 적용)
+function realizedAsOf(dateStr) {
+  const trades = []; const accounts = {}; let total = 0;
+  for (const c of DATA.closed) {
+    if (!inFilter(c.account) || c.sell_date > dateStr) continue;
+    const cost = c.tranches.reduce((s, t) => s + t.cost, 0);
+    const buy_date = c.tranches.reduce((m, t) => t.date < m ? t.date : m, c.tranches[0].date);
+    const pl = c.proceeds - cost; total += pl;
+    accounts[c.account] = (accounts[c.account] || 0) + pl;
+    trades.push({ account: c.account, name: c.name, buy_date, sell_date: c.sell_date,
+      cost, proceeds: c.proceeds, pl, return_pct: cost ? pl / cost * 100 : 0 });
+  }
+  trades.sort((a, b) => b.sell_date.localeCompare(a.sell_date));
+  return { total, accounts, trades };
+}
+
+// ---- 렌더 ----
+function renderAll() { renderSummary(); renderAccountFilter(); renderYearSel(); renderChart(); renderAsofBar(); renderHoldings(); renderRealized(); }
+
+function renderYearSel() {
+  const years = [...new Set(DAYS.map(d => d.slice(0, 4)))].sort();
+  const opts = [["전체", null], ...years.map(y => [y, y])];
+  document.getElementById("yearSel").innerHTML = opts.map(([label, val]) =>
+    `<button class="yr${selectedYear === val ? " on" : ""}" onclick="setYear(${val ? `'${val}'` : "null"})">${label}</button>`
+  ).join("");
+}
+function setYear(y) { selectedYear = y; renderYearSel(); renderChart(); }
+
+function renderSummary() {
+  const d = effectiveDate();
+  const pos = positionsOnDate(d);
+  const value = pos.reduce((s, p) => s + p.value, 0);
+  const cost = pos.reduce((s, p) => s + p.cost, 0);
+  const pl = value - cost, ret = cost ? pl / cost * 100 : 0;
+  const prevDay = prevTradingDay(d);
+  const prevPos = prevDay ? positionsOnDate(prevDay) : [];
+  const dc = dayChange(prevPos, pos, d);   // 전체 보유의 '전일대비' 평가손익 변량(연속보유 교집합)
+  const realized = realizedAsOf(d).total;
+  const cash = cashOnDate(d);
+  const net = value + cash;
+  const totalGain = pl + realized;
+
+  const node = (label, valHtml, total) =>
+    `<div class="flow-node${total ? " total" : ""}"><div class="label">${label}</div>
+       <div class="val">${valHtml}</div></div>`;
+  const op = (label, cls_, ...vals) =>
+    `<div class="flow-op"><span class="oplabel">${label}</span>
+       ${vals.map(v => {
+         const txt = typeof v === "string" ? v : v.text;
+         const big = (typeof v === "object" && v.big) ? " big" : "";
+         return `<span class="opval ${cls_}${big}">${txt}</span>`;
+       }).join("")}</div>`;
+
+  // 흐름의 척추 = 잔액(balance): 투자원금 → (평가손익) → 평가금액 → (+현금) → 총자산.
+  // 핵심 강조는 '평가금액'(주식). 현금은 부가 정보로 총자산에 합산만 한다.
+  const valLabel = isToday() ? "평가금액" : "평가금액 (" + d + ")";
+  // 평가이익 노드: 1줄 = 금액 · 수익률, 2줄 = 오늘자 변량(아래 합계 라인과 동일 포맷).
+  const plLabel = pl >= 0 ? "평가이익 (미실현)" : "평가손실 (미실현)";
+  const plOp = `<div class="flow-op"><span class="oplabel">${plLabel}</span>`
+    + `<span class="opval ${cls(pl)} big">${signWon(pl)} <span class="op-sub">· ${pct(ret)}</span></span>`
+    + (dc ? `<span class="op-day ${dayChangeCls(dc)}"><span class="day-lbl">전일대비</span> ${dayChangeText(dc)}</span>` : "")
+    + `</div>`;
+  const parts = [
+    node("투자원금", won(cost)),
+    plOp,
+    node(valLabel, won(value), true),
+  ];
+  if (cash > 0) {
+    parts.push(
+      op("현금 (예비) 합산", "muted", signWon(cash)),
+      node("총자산 (평가 + 현금)", won(net)));
+  }
+  // 누적 수익(profit) 한 줄: 미실현은 위 연산자에 있으므로 여기선 실현 + 총수익만.
+  parts.push(
+    `<div class="flow-foot">
+       <span class="fk">확정수익 (실현)</span> <span class="${cls(realized)}">${signWon(realized)}</span>
+       <span class="ft">총수익 <span class="${cls(totalGain)}">${signWon(totalGain)}</span></span>
+     </div>`);
+  document.getElementById("summary").innerHTML = parts.join("");
+}
+
+// 계좌 필터 알약 바. '전체' = 필터 해제, 나머지는 토글.
+// 보유 종목이 있는 계좌만 노출한다. 현금 전용 계좌(예: 케이뱅크)는 필터해도
+// 보여줄 내역이 없으므로 제외하되, 현금 자체는 '전체' 합계에는 그대로 포함된다.
+function renderAccountFilter() {
+  const d = effectiveDate();
+  const hasPos = new Set();
+  for (const l of DATA.lots) hasPos.add(l.account);
+  for (const c of DATA.closed) hasPos.add(c.account);
+  const pills = [
+    `<span class="flabel">계좌</span>`,
+    `<span class="pill${selectedAccounts.size === 0 ? " on" : ""}" onclick="clearAccounts()">전체</span>`,
+  ];
+  for (const acc of ACC_ORDER) {
+    if (!hasPos.has(acc)) continue;
+    const av = accountValueOnDate(acc, d);
+    const on = selectedAccounts.has(acc) ? " on" : "";
+    pills.push(`<span class="pill${on}" onclick="toggleAccount('${acc}', event)">${acc}<span class="pv">${Math.round(av / 1e6).toLocaleString()}M</span></span>`);
+  }
+  document.getElementById("acctFilter").innerHTML = pills.join("");
+}
+
+function toggleAccount(acc, ev) {
+  // Cmd+클릭 = "이 계좌만 선택": 나머지는 모두 해제한다.
+  if (ev && ev.metaKey) {
+    selectedAccounts = new Set([acc]);
+    renderAll();
+    return;
+  }
+  // Shift+클릭 = "이 계좌만 제외": 보유 종목이 있는 나머지 계좌를 모두 선택한다.
+  if (ev && ev.shiftKey) {
+    const hasPos = new Set();
+    for (const l of DATA.lots) hasPos.add(l.account);
+    for (const c of DATA.closed) hasPos.add(c.account);
+    selectedAccounts = new Set(ACC_ORDER.filter(a => a !== acc && hasPos.has(a)));
+    renderAll();
+    return;
+  }
+  if (selectedAccounts.has(acc)) selectedAccounts.delete(acc); else selectedAccounts.add(acc);
+  renderAll();
+}
+function clearAccounts() { selectedAccounts.clear(); renderAll(); }
+
+// 선택일에 옅은 점선 수직 가이드선을 그린다 (흰 테두리 점과 함께 선택일을 부각).
+const selDatePlugin = {
+  id: "selDate",
+  afterDatasetsDraw(chart) {
+    if (!selectedDate) return;
+    const i = chart.data.labels.indexOf(selectedDate);
+    if (i < 0) return;
+    const x = chart.scales.x.getPixelForValue(i);
+    const { top, bottom } = chart.chartArea;
+    const ctx = chart.ctx;
+    ctx.save();
+    ctx.setLineDash([4, 4]);
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = "rgba(255,167,38,.35)";
+    ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke();
+    ctx.restore();
+  },
+};
+
+function renderChart() {
+  // 전 구간을 계산한 뒤, 앞뒤의 빈(0) 구간만 잘라낸다.
+  // 중간의 0 일(전량 매도해 현금화한 날)은 그대로 둬서 딥이 보이게 한다.
+  const rawD = [], rawV = [], rawC = [];
+  for (const d of DAYS) {
+    if (selectedYear && d.slice(0, 4) !== selectedYear) continue;
+    const pos = positionsOnDate(d);
+    rawD.push(d);
+    rawV.push(pos.reduce((s, p) => s + p.value, 0));
+    rawC.push(pos.reduce((s, p) => s + p.cost, 0));
+  }
+  let lo = 0, hi = rawV.length - 1;
+  while (lo <= hi && rawV[lo] <= 0) lo++;
+  while (hi >= lo && rawV[hi] <= 0) hi--;
+  const labels = rawD.slice(lo, hi + 1);
+  const value = rawV.slice(lo, hi + 1);
+  const cost = rawC.slice(lo, hi + 1);
+  const selIdx = selectedDate ? labels.indexOf(selectedDate) : -1;
+  const data = { labels, datasets: [
+    { label: "평가금액", data: value, borderColor: "#ffa726", backgroundColor: "rgba(255,167,38,.10)",
+      fill: true, tension: .2, pointRadius: labels.map((_, i) => i === selIdx ? 7 : 0),
+      pointBackgroundColor: "#ffa726",
+      pointHoverRadius: 5, pointHoverBackgroundColor: "#ffa726", pointHoverBorderColor: "#fff", pointHoverBorderWidth: 2,
+      pointBorderColor: labels.map((_, i) => i === selIdx ? "#fff" : "transparent"),
+      pointBorderWidth: labels.map((_, i) => i === selIdx ? 2.5 : 0), borderWidth: 2 },
+    { label: "투자원금", data: cost, borderColor: "#8b93a3", borderDash: [5, 5],
+      fill: false, tension: .2, pointRadius: 0, borderWidth: 1.5 },
+  ]};
+  const filterLabel = selectedAccounts.size ? [...selectedAccounts].join(" + ") : "전체 계좌";
+  document.getElementById("chartAcc").textContent = filterLabel;
+  const opts = {
+    responsive: true, interaction: { mode: "index", intersect: false },
+    onClick: (e, els, ch) => {
+      const pts = ch.getElementsAtEventForMode(e, "index", { intersect: false }, true);
+      if (pts.length) { selectedDate = ch.data.labels[pts[0].index]; renderAll(); }
+    },
+    plugins: {
+      legend: { display: false },
+      title: { display: false },
+      tooltip: { callbacks: {
+        label: c => c.dataset.label + ": " + won(c.parsed.y),
+        afterBody: items => {
+          const v = items.find(i => i.dataset.label === "평가금액")?.parsed.y;
+          const co = items.find(i => i.dataset.label === "투자원금")?.parsed.y;
+          if (v == null || co == null) return "";
+          const diff = v - co;
+          return "평가이익: " + signWon(diff) + " (" + pct(co ? diff / co * 100 : 0) + ")";
+        },
+      } },
+    },
+    scales: {
+      x: { ticks: { color: "#8b93a3", maxTicksLimit: 10 }, grid: { color: "#262b35" } },
+      y: { beginAtZero: true, ticks: { color: "#8b93a3", callback: v => "₩" + (v / 1e6).toFixed(0) + "M" }, grid: { color: "#262b35" } },
+    },
+  };
+  if (chart) { chart.data = data; chart.options = opts; chart.update(); }
+  else chart = new Chart(document.getElementById("chart"), { type: "line", data, options: opts, plugins: [selDatePlugin] });
+  document.getElementById("chartHint").textContent =
+    `${labels[0]} ~ ${labels[labels.length - 1]} · ${labels.length} 거래일 · 그래프의 점을 클릭하면 그날 보유 내역을 봅니다 (매도 종목은 보유 기간만 반영)`;
+}
+
+function renderAsofBar() {
+  const bar = document.getElementById("asofBar");
+  if (isToday()) { bar.classList.add("hidden"); return; }
+  bar.classList.remove("hidden");
+  const d = effectiveDate();
+  const pos = positionsOnDate(d);
+  const value = pos.reduce((s, p) => s + p.value, 0);
+  bar.innerHTML = `📅 <b>${d}</b> 기준 보유 내역 · 평가 ${won(value)}
+    <button onclick="selectedDate=null;renderAll()" style="margin-left:auto">현재로 돌아가기</button>`;
+}
+
+function renderHoldings() {
+  const d = effectiveDate();
+  const pos = positionsOnDate(d);
+  const byAcc = {};
+  for (const p of pos) (byAcc[p.account] ??= []).push(p);
+  const prevDay = prevTradingDay(d);
+  const prevPos = prevDay ? positionsOnDate(prevDay) : [];
+  const byAccPrev = {};
+  for (const p of prevPos) (byAccPrev[p.account] ??= []).push(p);
+  const order = ACC_ORDER.filter(a => byAcc[a]);
+  if (!order.length) {
+    document.getElementById("accounts").innerHTML = `<div class="loading">${d} 기준 보유 종목이 없습니다.</div>`;
+    return;
+  }
+  let html = "";
+  for (const acc of order) {
+    const rows = byAcc[acc];
+    const aVal = rows.reduce((s, r) => s + r.value, 0);
+    const aCost = rows.reduce((s, r) => s + r.cost, 0);
+    const aPl = aVal - aCost, aRet = aCost ? aPl / aCost * 100 : 0;
+    const prevRows = byAccPrev[acc] ?? [];
+    const dc = dayChange(prevRows, rows, d);
+    const prevHeld = new Set(prevRows.map(r => r.ticker));
+    html += `<h2>${acc}<span class="acc-meta">${won(aVal)} · <span class="${cls(aPl)}">${pct(aRet)}</span></span></h2>`;
+    html += `<table><thead><tr>
+      <th class="name">종목</th><th>수량</th><th>평균단가</th><th>${isToday() ? "현재가" : d + " 종가"}</th>
+      <th>매입금액</th><th>평가금액</th><th>손익</th><th>수익률</th>
+    </tr></thead><tbody>`;
+    rows.sort((a, b) => b.value - a.value);
+    for (const r of rows) {
+      const mv = priceDayMove(r.ticker, d, prevHeld.has(r.ticker));
+      html += `<tr>
+        <td class="name">${r.name}<span class="tag">${r.region}</span></td>
+        <td>${Math.round(r.shares).toLocaleString()}</td>
+        <td>${won(r.avg_price)}</td>
+        <td>${won(r.price)}<span class="dir ${mv.cls}">${mv.arrow}${mv.pct != null ? " " + pct(mv.pct) : ""}</span></td>
+        <td>${won(r.cost)}</td>
+        <td>${won(r.value)}</td>
+        <td class="${cls(r.pl)}">${signWon(r.pl)}</td>
+        <td class="${cls(r.pl)}">${pct(r.return_pct)}</td>
+      </tr>`;
+    }
+    html += `<tr class="total-row"><td class="name">합계</td><td></td><td></td><td></td>
+      <td>${won(aCost)}</td><td>${won(aVal)}</td>
+      <td class="${cls(aPl)}">${signWon(aPl)}${dc ? `<div class="day-chg ${dayChangeCls(dc)}"><span class="day-lbl">전일대비</span> ${dayChangeWon(dc)}</div>` : ""}</td>
+      <td class="${cls(aPl)}">${pct(aRet)}${dc ? `<div class="day-chg ${dayChangeCls(dc)}">${dayChangePct(dc)}</div>` : ""}</td></tr></tbody></table>`;
+  }
+  document.getElementById("accounts").innerHTML = html;
+}
+
+function renderRealized() {
+  const d = effectiveDate();
+  const r = realizedAsOf(d);
+  const head = document.getElementById("realizedHeader");
+  const note = document.getElementById("realizedNote");
+  if (!r.trades.length) { head.style.display = "none"; note.style.display = "none"; document.getElementById("realized").innerHTML = ""; return; }
+  head.style.display = ""; note.style.display = "";
+  note.innerHTML = `${isToday() ? "" : d + "까지 "}매도/만기 완료 ${r.trades.length}건 · 누적 확정수익 <span class="${cls(r.total)}">${signWon(r.total)}</span>`;
+  let html = `<table><thead><tr>
+    <th class="name">종목</th><th>계좌</th><th>매수일</th><th>매도일</th>
+    <th>매입금액</th><th>매도금액</th><th>확정수익</th><th>수익률</th>
+  </tr></thead><tbody>`;
+  for (const t of r.trades) {
+    html += `<tr>
+      <td class="name">${t.name}</td>
+      <td style="text-align:left;color:var(--muted)">${t.account}</td>
+      <td>${t.buy_date}</td><td>${t.sell_date}</td>
+      <td>${won(t.cost)}</td><td>${won(t.proceeds)}</td>
+      <td class="${cls(t.pl)}">${signWon(t.pl)}</td>
+      <td class="${cls(t.pl)}">${pct(t.return_pct)}</td>
+    </tr>`;
+  }
+  html += `<tr class="total-row"><td class="name">합계</td><td></td><td></td><td></td>
+    <td></td><td></td><td class="${cls(r.total)}">${signWon(r.total)}</td><td></td></tr></tbody></table>`;
+  document.getElementById("realized").innerHTML = html;
+}
+
+reload();
+</script>
+</body>
+</html>
