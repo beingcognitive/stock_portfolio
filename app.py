@@ -15,6 +15,10 @@ import portfolio as pf
 
 app = Flask(__name__)
 
+# 차분 모드 기본값: 전일대비(일일 변동)를 숨긴다. --show-daily 로 켠다.
+# 자주 들여다볼수록 노이즈상 손실에 조급해지기 쉬워, 기본은 누적·곡선만 보여준다.
+SHOW_DAILY = False
+
 # 가격 시계열만 캐시(과거 종가는 불변). 원장은 매 요청 새로 읽는다.
 _cache: dict = {"prices": None, "ts": 0.0}
 _TTL = 1800.0  # 이 시간이 지나거나 새로고침을 누르면 최근 구간 가격을 다시 받는다.
@@ -51,7 +55,7 @@ def _no_cache(resp):
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", show_daily=SHOW_DAILY)
 
 
 @app.route("/api/data")
@@ -65,7 +69,11 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--curve", action="store_true", help="가치 곡선을 콘솔에 출력하고 종료")
+    parser.add_argument("--show-daily", action="store_true",
+                        help="전일대비(일일 변동)를 표시. 기본은 차분 모드로 숨김")
     args = parser.parse_args()
+
+    SHOW_DAILY = args.show_daily
 
     if args.curve:
         for pt in pf.equity_curve():

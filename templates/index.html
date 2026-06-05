@@ -27,6 +27,8 @@
     padding: 7px 14px; border-radius: 8px; cursor: pointer; font-size: 13px;
   }
   button:hover { border-color: var(--accent); }
+  /* 차분 모드 토글: 평소엔 조용하게(muted), 호버 시에만 강조 */
+  .calm-toggle { color: var(--muted); }
   /* 자산 흐름(flow): 투자원금 → 평가금액 → 총자산 으로 이어 읽는다 */
   .flow { display: flex; align-items: stretch; flex-wrap: wrap; gap: 10px; margin: 18px 0; }
   .flow-node {
@@ -114,15 +116,20 @@
   .day-chg { font-size: 11px; font-weight: 400; margin-top: 3px; white-space: nowrap; }
   .loading { color: var(--muted); padding: 40px; text-align: center; }
   .section-note { color: var(--muted); font-size: 12px; margin: -4px 0 10px; }
+  /* 차분 모드(기본): 전일대비/일일 등락 신호를 모두 숨긴다.
+     요약 평가이익 노드(.op-day)·계좌 합계(.day-chg)·종목별 현재가 화살표(.dir).
+     'python app.py --show-daily' 로 켜면 다시 보인다. */
+  body.calm .dir, body.calm .day-chg, body.calm .op-day { display: none; }
 </style>
 </head>
-<body>
+<body class="{{ 'calm' if not show_daily else '' }}">
   <header>
     <div>
       <h1>포트폴리오 트래커</h1>
       <div class="as-of" id="asOf">불러오는 중…</div>
     </div>
     <div class="btns">
+      <button id="calmToggle" class="calm-toggle" onclick="toggleCalm()" aria-pressed="false"></button>
       <button id="refreshBtn" onclick="reload(true)">새로고침</button>
     </div>
   </header>
@@ -157,6 +164,33 @@ const won = n => "₩" + Math.round(n).toLocaleString("ko-KR");
 const signWon = n => (n >= 0 ? "+" : "") + won(n);
 const pct = n => (n >= 0 ? "+" : "") + n.toFixed(1) + "%";
 const cls = n => n >= 0 ? "up" : "down";
+
+// ── 차분 모드(전일대비 숨김) ──────────────────────────────────────────────
+// 서버 플래그(--show-daily)는 '첫 기본값'일 뿐. 사용자가 토글을 한 번 누르면
+// 그 선택을 localStorage 에 기억해 새로고침/재시작 뒤에도 유지한다(서버 기본값보다 우선).
+const CALM_DEFAULT = {{ 'true' if not show_daily else 'false' }};  // true = 전일대비 숨김
+const CALM_KEY = "calmMode";
+function readCalmPref() { try { return localStorage.getItem(CALM_KEY); } catch (e) { return null; } }
+function writeCalmPref(v) { try { localStorage.setItem(CALM_KEY, v); } catch (e) {} }
+function applyCalmMode(calm) {
+  document.body.classList.toggle("calm", calm);
+  const b = document.getElementById("calmToggle");
+  if (b) {
+    b.textContent = calm ? "전일대비 보기" : "전일대비 숨기기";
+    b.title = calm ? "전일 대비 일일 변동을 표시한다"
+                   : "전일 대비 일일 변동을 숨긴다 (차분 모드)";
+    b.setAttribute("aria-pressed", String(!calm));
+  }
+}
+function toggleCalm() {
+  const calm = !document.body.classList.contains("calm");
+  writeCalmPref(calm ? "1" : "0");
+  applyCalmMode(calm);
+}
+(function initCalmMode() {
+  const stored = readCalmPref();
+  applyCalmMode(stored == null ? CALM_DEFAULT : stored === "1");
+})();
 
 let DATA, DAYS, DAYIDX, FFILL, ACC_ORDER;
 let selectedAccounts = new Set();   // 비어 있으면 전체

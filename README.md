@@ -45,6 +45,8 @@ cp transactions.example.yaml transactions.yaml
 # Start the dashboard (Windows: .venv\Scripts\python app.py)
 .venv/bin/python app.py
 # → open http://127.0.0.1:8000 in your browser (port clash: app.py --port 8001)
+# Calm mode is the default (no day-over-day numbers). Add --show-daily to see them:
+#   .venv/bin/python app.py --show-daily
 ```
 
 > On Windows, replace `.venv/bin/` with `.venv\Scripts\` in the commands above.
@@ -205,5 +207,12 @@ The file's own header comments describe each field (in Korean); the English summ
   a no-trade day it equals the price move of your holdings. The denominator is yesterday's held value,
   making it a daily %. A ticker bought today isn't in the total, so its row's day-over-day arrow (▲▼) is
   hidden too (for consistency).
+- **Calm mode (default)** : all day-over-day signals — the 전일대비 line under unrealized P/L, the same line
+  under each account total, and the per-row ▲▼ price arrows — are **hidden by default**. Checking a
+  portfolio more often surfaces noise-level losses more often, which feeds short-term anxiety (myopic loss
+  aversion), so the default view keeps only cumulative figures and the curve. A **전일대비 보기 / 숨기기**
+  toggle in the header flips it live (no restart); the choice is saved in the browser (`localStorage`) and
+  overrides the default on later visits. `app.py --show-daily` only sets the *initial* default before you've
+  toggled.
 - **No browser cache** : a `Cache-Control: no-store` header is set so stale JS doesn't read new data and
   break after a code update.
