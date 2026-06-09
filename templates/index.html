@@ -452,8 +452,27 @@ function realizedAsOf(dateStr) {
 // ---- 렌더 ----
 function renderAll() { renderSummary(); renderAccountFilter(); renderYearSel(); renderChart(); renderAsofBar(); renderHoldings(); renderRealized(); }
 
+// 선택된 계좌가 실제로 무언가 보유한 거래일이 있는 연도만 추린다.
+//   (필터 해제 시엔 전체 계좌 기준 → DAYS의 모든 연도.) 2026에만 거래가 있는 계좌를
+//   골랐을 때 2025 버튼이 뜨던 문제를 막는다. held = 그날 보유 포지션이 하나라도 있는지.
+function availableYears() {
+  const held = d => {
+    for (const l of DATA.lots)
+      if (inFilter(l.account) && l.date <= d) return true;
+    for (const c of DATA.closed)
+      if (inFilter(c.account) && d < c.sell_date)
+        for (const tr of c.tranches) if (tr.date <= d) return true;
+    return false;
+  };
+  const years = new Set();
+  for (const d of DAYS) if (held(d)) years.add(d.slice(0, 4));
+  return [...years].sort();
+}
+
 function renderYearSel() {
-  const years = [...new Set(DAYS.map(d => d.slice(0, 4)))].sort();
+  const years = availableYears();
+  // 계좌를 좁혀 현재 선택 연도가 사라졌다면 '전체'로 되돌린다 (빈 차트 방지).
+  if (selectedYear && !years.includes(selectedYear)) selectedYear = null;
   const opts = [["전체", null], ...years.map(y => [y, y])];
   document.getElementById("yearSel").innerHTML = opts.map(([label, val]) =>
     `<button class="yr${selectedYear === val ? " on" : ""}" onclick="setYear(${val ? `'${val}'` : "null"})">${label}</button>`
