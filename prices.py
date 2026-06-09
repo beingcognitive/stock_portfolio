@@ -1,8 +1,10 @@
 """현재가 조회 (price fetching).
 
-전략: KRX 숫자 코드는 pykrx로 최근 종가를 먼저 시도하고,
-실패하거나 영숫자 코드(예: 0185L0)인 경우 yfinance(.KS)로 폴백한다.
-모든 종목에 .KS 야후 심볼이 있으므로 yfinance가 최종 안전망 역할을 한다.
+전략: KRX 코드(6자리 숫자든 영숫자 단축코드든)가 있으면 pykrx로 먼저 종가를
+시도하고, 실패하거나 KRX 코드가 없으면 yfinance(.KS)로 폴백한다.
+pykrx get_market_ohlcv 는 '0185L0' 같은 영숫자 단축코드도 그대로 받으며,
+야후(.KS) 피드가 일부 신규 ETF의 당일 봉을 누락하는 일이 있어 — 2026-06 관측 —
+KRX 코드가 있는 종목은 pykrx 를 1차 소스로 둔다. yfinance 는 최종 안전망.
 """
 
 from __future__ import annotations
@@ -10,9 +12,6 @@ from __future__ import annotations
 import contextlib
 import datetime as _dt
 import io
-import re
-
-_NUMERIC_CODE = re.compile(r"^\d{6}$")
 
 
 @contextlib.contextmanager
@@ -23,7 +22,7 @@ def _quiet():
 
 
 def _from_pykrx(krx_code: str, as_of: _dt.date | None = None) -> float | None:
-    if not krx_code or not _NUMERIC_CODE.match(krx_code):
+    if not krx_code:
         return None
     try:
         with _quiet():
@@ -104,7 +103,7 @@ def get_series(
     """
     out: dict[str, float] = {}
     code = krx_code or ""
-    if _NUMERIC_CODE.match(code):
+    if code:  # KRX 코드(숫자/영숫자)면 pykrx 우선, 비면 곧장 yfinance.
         try:
             with _quiet():
                 from pykrx import stock
