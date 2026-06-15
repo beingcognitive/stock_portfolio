@@ -7,7 +7,9 @@
 from __future__ import annotations
 
 import argparse
+import threading
 import time
+import webbrowser
 
 from flask import Flask, jsonify, render_template, request
 
@@ -71,6 +73,8 @@ if __name__ == "__main__":
     parser.add_argument("--curve", action="store_true", help="가치 곡선을 콘솔에 출력하고 종료")
     parser.add_argument("--show-daily", action="store_true",
                         help="전일대비(일일 변동)를 표시. 기본은 차분 모드로 숨김")
+    parser.add_argument("--no-browser", action="store_true",
+                        help="실행 시 브라우저 자동 열기를 끈다")
     args = parser.parse_args()
 
     SHOW_DAILY = args.show_daily
@@ -79,4 +83,9 @@ if __name__ == "__main__":
         for pt in pf.equity_curve():
             print(f"{pt['date']}  value=₩{pt['total_value']:>15,.0f}  cost=₩{pt['total_cost']:>15,.0f}")
     else:
+        # 서버가 포트에 바인딩될 때까지 잠깐 기다렸다가 기본 브라우저로 대시보드를 연다.
+        #   접속 주소는 localhost 고정(0.0.0.0 으로 띄워도 브라우저는 127.0.0.1 로 연결).
+        if not args.no_browser:
+            url = f"http://127.0.0.1:{args.port}/"
+            threading.Timer(1.0, lambda: webbrowser.open(url)).start()
         app.run(host=args.host, port=args.port, debug=False)
