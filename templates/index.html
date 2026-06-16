@@ -188,8 +188,8 @@
   <div id="realized"></div>
 
 <script>
-const won = n => "₩" + Math.round(n).toLocaleString("ko-KR");
-const signWon = n => (n >= 0 ? "+" : "") + won(n);
+const won = n => "₩" + Math.round(Math.abs(n)).toLocaleString("ko-KR");
+const signWon = n => (n < 0 ? "-" : "+") + won(n);
 const pct = n => (n >= 0 ? "+" : "") + n.toFixed(1) + "%";
 const cls = n => n >= 0 ? "up" : "down";
 const cssVar = n => getComputedStyle(document.body).getPropertyValue(n).trim();
