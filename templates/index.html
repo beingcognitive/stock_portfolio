@@ -95,6 +95,27 @@
   .pill.on { border-color: var(--accent); background: var(--accent-bg); }
   .pill .pv { color: var(--muted); font-size: 12px; }
   .pill.on .pv { color: var(--accent); }
+  /* 거래일 이동 스테퍼: 알약 라운드를 잇는 세그먼트 컨트롤(‹ 날짜 ›).
+     계좌 필터 줄 우측에 붙여 차트 클릭 없이 날짜를 한 칸씩 넘긴다. */
+  .datenav {
+    margin-left: auto; display: inline-flex; align-items: stretch;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 999px; overflow: hidden;
+  }
+  .datenav button {
+    border: none; border-radius: 0; background: none; color: var(--txt);
+    padding: 6px 12px; font-size: 13px; line-height: 1.2;
+    transition: background .12s, color .12s;
+  }
+  .datenav button:hover:not(:disabled) { border: none; background: var(--accent-bg); color: var(--accent); }
+  .datenav .arw { color: var(--muted); font-size: 15px; padding: 6px 14px; }
+  /* 가운데 날짜: 탭형 숫자(tabular-nums)로 칸 이동 시 폭이 흔들리지 않게 고정 */
+  .datenav .cur {
+    min-width: 6.2em; text-align: center; font-variant-numeric: tabular-nums;
+    color: var(--muted); cursor: default;
+    border-left: 1px solid var(--line); border-right: 1px solid var(--line);
+  }
+  .datenav .cur.off { color: var(--accent); cursor: pointer; }   /* 과거일 선택 중 → 클릭 시 최신으로 */
+  .datenav button:disabled { color: var(--line); cursor: default; }
   .up { color: var(--up); } .down { color: var(--down); }
   /* 당일 변량(전일 대비)은 누적 손익과 같은 초록/빨강을 쓰되 채도를 낮춰 시각적으로 격하한다. */
   .dir.up, .day-chg.up, .op-day.up { color: var(--up-dim); }
@@ -551,8 +572,43 @@ function renderAccountFilter() {
     const on = selectedAccounts.has(acc) ? " on" : "";
     pills.push(`<span class="pill${on}" onclick="toggleAccount('${acc}', event)">${acc}<span class="pv">${Math.round(av / 1e6).toLocaleString()}M</span></span>`);
   }
+  pills.push(dateNavHTML());
   document.getElementById("acctFilter").innerHTML = pills.join("");
 }
+
+// 거래일 이동 스테퍼(‹ 날짜 ›). 경계(첫·마지막 거래일)에선 해당 화살표를 비활성화한다.
+function dateNavHTML() {
+  if (!DAYS.length) return "";
+  const cur = effectiveDate();
+  let i = DAYS.indexOf(cur);
+  if (i < 0) i = DAYS.length - 1;
+  const atFirst = i <= 0, atLast = i >= DAYS.length - 1, off = !isToday();
+  return `<div class="datenav" role="group" aria-label="거래일 이동">
+    <button class="arw" onclick="stepDate(-1)" aria-label="이전 거래일"${atFirst ? " disabled" : ""}>‹</button>
+    <button class="cur${off ? " off" : ""}" onclick="gotoLatest()" title="${off ? "최신 거래일로" : "최신 거래일"}">${cur}</button>
+    <button class="arw" onclick="stepDate(1)" aria-label="다음 거래일"${atLast ? " disabled" : ""}>›</button>
+  </div>`;
+}
+
+// 거래일 한 칸 이동(delta: -1 과거 / +1 미래). 마지막 칸은 '현재'(selectedDate=null)로 정규화.
+function stepDate(delta) {
+  if (!DAYS.length) return;
+  let i = DAYS.indexOf(effectiveDate());
+  if (i < 0) i = DAYS.length - 1;
+  const j = i + delta;
+  if (j < 0 || j >= DAYS.length) return;               // 경계 밖 → 무시
+  selectedDate = j === DAYS.length - 1 ? null : DAYS[j];
+  renderAll();
+}
+function gotoLatest() { if (selectedDate) { selectedDate = null; renderAll(); } }
+
+// ←/→ 로도 거래일 이동(입력 요소 포커스 중엔 무시).
+document.addEventListener("keydown", e => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.target && e.target.closest && e.target.closest("input,textarea,select")) return;
+  if (e.key === "ArrowLeft") { stepDate(-1); e.preventDefault(); }
+  else if (e.key === "ArrowRight") { stepDate(1); e.preventDefault(); }
+});
 
 function toggleAccount(acc, ev) {
   // Cmd+클릭 = "이 계좌만 선택": 나머지는 모두 해제한다.
