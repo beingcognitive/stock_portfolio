@@ -82,8 +82,10 @@ On-screen labels are Korean; below, the English term comes first with the Korean
 
 - **Asset flow (summary)** : reads left to right as Cost basis (투자원금) → (unrealized P/L) →
   **Market value (평가금액)** → (+ cash) → Net worth (총자산). **Market value** is the focus
-  (yellow border); cash is just added on to reach net worth. A line below shows realized P/L (확정수익)
-  and total gain (unrealized + realized) separately.
+  (yellow border); cash is just added on to reach net worth. The cash step (+ cash → 총자산) is tied
+  to the chart's cash-reserve toggle — off by default, so the flow ends on **Market value**; turn cash
+  on to extend it to net worth. A line below shows realized P/L (확정수익) and total gain (unrealized +
+  realized) separately.
 - **Account filter (pills)** : only accounts that hold something appear as pills. Click to filter to
   that account; **전체** (All) clears it. (Cash-only accounts have nothing to show, so they're left off.)
   A **date stepper** (‹ date ›) at the right of this row moves through trading days one at a time.
@@ -119,8 +121,9 @@ On-screen labels are Korean; below, the English term comes first with the Korean
 - **Year selector (top-right of chart)** : All / per-year buttons zoom the curve to that year. Buttons
   are generated from the years present in your data. The Y-axis always starts at 0.
 - **Cash-reserve band (현금 예비 in the chart legend)** : click the legend chip to overlay your reserve
-  cash as a band on top of market value, so the curve's top edge reads as net worth (총자산). Off by
-  default. The reserve is **universal** — it shows on top of *any* account selection (see notes).
+  cash as a band on top of market value, so the curve's top edge reads as net worth (총자산). The same
+  toggle also adds the **+ cash → 총자산 step to the summary flow**, so chart and summary stay in sync.
+  Off by default. The reserve is **universal** — it shows on top of *any* account selection (see notes).
 - **Holdings view toggle (계좌별 / 종목별)** : switch the holdings between per-account tables and one
   by-stock table. In **종목별**, a ticker held in several accounts gets an **N계좌 합산** tag and **expands
   on click** into an indented per-account breakdown.
@@ -214,8 +217,8 @@ The file's own header comments describe each field (in Korean); the English summ
     open, if sold near the open). Replace it once you have the exact figure.
   - Dividends are best left out of realized P/L to keep it simple (track separately if you want).
 - **Cash is a separate, universal bucket** : reserve cash isn't mixed into cost basis / market value /
-  return %, only into **net worth (market value + cash)**, the asset flow, and (when toggled on) the
-  chart's cash band. It lives in cash-only accounts that never hold stock, so it can't be picked as a
+  return %, only into **net worth (market value + cash)** and, when the cash toggle is on, the asset
+  flow's net-worth step and the chart's cash band. It lives in cash-only accounts that never hold stock, so it can't be picked as a
   filter pill; the dashboard therefore treats it as **universal** — the full reserve shows on top of *any*
   account selection, not just **전체**. This keeps two stories — investment performance (return, P/L) and
   balance (net worth) — apart, so the same number never shows twice.

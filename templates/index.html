@@ -223,7 +223,7 @@
       <span class="chart-legend">
         <span class="lg"><i class="sw sw-val"></i>평가금액</span>
         <span class="lg"><i class="sw sw-cost"></i>투자원금</span>
-        <button class="lg lg-cash" id="cashToggle" onclick="toggleCash()" aria-pressed="false" title="현금(예비)을 차트 바닥에 깔아 총자산까지 보기 (클릭해 켜고 끄기)"><i class="sw sw-cash"></i>현금 (예비)</button>
+        <button class="lg lg-cash" id="cashToggle" onclick="toggleCash()" aria-pressed="false" title="현금(예비)을 차트 바닥에 깔고 요약에 총자산 스텝까지 더해 보기 (클릭해 켜고 끄기)"><i class="sw sw-cash"></i>현금 (예비)</button>
       </span>
       <div class="year-sel" id="yearSel"></div>
     </div>
@@ -540,8 +540,9 @@ function renderYearSel() {
 // 연도 필터 변경 → renderAll 로 VIS·스테퍼 경계까지 함께 갱신(필터 밖 화살표 비활성화 반영).
 function setYear(y) { selectedYear = y; renderAll(); }
 
-// 현금(예비) 띠 표시 토글. 차트만 다시 그리면 충분(요약·표는 영향 없음).
-function toggleCash() { showCash = !showCash; renderChart(); }
+// 현금(예비) 토글. 차트의 현금 띠와 요약의 '총자산' 스텝을 함께 켜고 끈다
+// (끄면 흐름이 강조 노드 '평가금액'에서 끝난다). 표는 영향 없음.
+function toggleCash() { showCash = !showCash; renderChart(); renderSummary(); }
 
 function renderSummary() {
   const d = effectiveDate();
@@ -582,7 +583,8 @@ function renderSummary() {
     plOp,
     node(valLabel, won(value), true),
   ];
-  if (cash > 0) {
+  // 현금(예비) 합산 + 총자산 = '세 번째 스텝'. 차트 현금 토글이 켜졌을 때만 노출.
+  if (cash > 0 && showCash) {
     parts.push(
       op("현금 (예비) 합산", "muted", signWon(cash)),
       node("총자산 (평가 + 현금)", won(net)));
