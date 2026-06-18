@@ -152,7 +152,25 @@
   }
   .asof-bar.hidden { display: none; }
   .asof-bar b { font-size: 15px; }
-  h2 { font-size: 15px; margin: 26px 0 10px; display: flex; align-items: baseline; gap: 10px; }
+  /* 보유 종목 보기 토글(계좌별/종목별): 첫 계좌 헤더의 이름 바로 옆에 인라인으로 둔다. */
+  .holdings-toggle { align-self: center; }
+  .seg { display: inline-flex; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 999px; overflow: hidden; }
+  .seg-btn { border: none; border-radius: 0; background: none; color: var(--muted);
+    padding: 4px 12px; font-size: 12px; cursor: pointer; transition: background .12s, color .12s; }
+  .seg-btn:hover:not(.on) { border: none; color: var(--txt); }
+  .seg-btn.on { background: var(--accent-bg); color: var(--accent); }
+  /* 종목별 보기에서 여러 계좌에 걸친 행임을 알리는 태그 */
+  .tag.merged { border-color: var(--accent); color: var(--accent); }
+  /* 여러 계좌 합산 행: 클릭하면 계좌별 내역 펼침(셰브론으로 상태 표시). */
+  tr.merged-row { cursor: pointer; }
+  tr.merged-row:hover td { background: var(--accent-bg); }
+  .exp-chev { display: inline-block; font-size: 9px; margin-right: 3px; transition: transform .12s; }
+  .exp-chev.open { transform: rotate(90deg); }
+  /* 펼친 계좌별 하위 행: 들여쓰고 차분하게 */
+  tr.sub td { color: var(--muted); font-size: 12px; background: rgba(127,127,127,.045); }
+  tr.sub td.name { padding-left: 30px; }
+  h2 { font-size: 15px; margin: 26px 0 10px; display: flex; align-items: center; gap: 10px; }
   h2 .acc-meta { font-size: 13px; font-weight: 400; color: var(--muted); margin-left: auto; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th, td { padding: 9px 10px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
@@ -215,6 +233,7 @@
 
   <div class="asof-bar hidden" id="asofBar"></div>
 
+  <div id="staleBanner"></div>
   <div id="accounts"><div class="loading">불러오는 중…</div></div>
 
   <h2 id="realizedHeader" style="display:none">확정 수익 (실현)</h2>
@@ -291,6 +310,8 @@ let selectedDate = null;            // null = 마지막 거래일(현재)
 let selectedYear = null;            // null = 전체 기간
 let VIS = [];                       // 현재 차트에 보이는 거래일(연도 필터+트림). 스테퍼 이동 범위.
 let showCash = false;               // 차트에 현금(예비) 띠 + 총자산 선 표시 여부 (기본 꺼짐)
+let holdingsView = "account";       // 보유 종목 보기: 'account'(계좌별) | 'stock'(종목별 합산)
+let expandedStocks = new Set();     // 종목별 보기에서 계좌 내역을 펼친 티커들
 let chart;
 
 // ---- 데이터 적재 + 전처리 ----
@@ -459,11 +480,12 @@ function accountValueOnDate(acc, dateStr) {
   return v;
 }
 
-// 기준일까지 누적된 현금 (계좌 필터 적용). 매입원금/평가금액과는 분리해 다룬다.
+// 기준일까지 누적된 현금(예비). 예비현금은 별도 현금 전용 계좌(케이뱅크 등)에 있어
+// 종목 계좌 필터로는 고를 수 없으므로, 계좌 필터와 무관한 '보편 잔액'으로 항상 전액을 더한다.
 function cashOnDate(dateStr) {
   let v = 0;
   for (const c of (DATA.cash || [])) {
-    if (!inFilter(c.account) || c.date > dateStr) continue;
+    if (c.date > dateStr) continue;
     v += c.amount;
   }
   return v;
@@ -708,20 +730,18 @@ function renderChart() {
       pointBorderWidth: labels.map((_, i) => i === selIdx ? 2.5 : 0), borderWidth: 2 };
   const costDs = { label: "투자원금", data: cost, borderColor: muted, borderDash: [5, 5],
       fill: false, tension: .2, pointRadius: 0, borderWidth: 1.5 };
+  valDs.data = value;        // 평가금액 선은 항상 실제 평가금액
+  valDs.fill = true;         // 0→평가금액 (오렌지 면)
   let datasets, cashArr = null;
-  // 현금 토글: 현금(예비)을 바닥(0→현금)에 깔고, 평가금액을 그 위에 쌓아 윗변이 총자산이 되게 한다.
-  //   Chart.js 라인 스택은 점 위치를 누적하지 않으므로(축 범위만 누적) 직접 누계를 만들어
-  //   평가금액 선을 총자산값에 두고 현금선(0번)까지 채워 '평가금액 띠'를 그린다.
+  // 현금 토글: 평가금액 위에 현금(예비)을 얹는다. 현금선(=총자산)을 평가금액선(0번)까지
+  //   채워 '현금 띠'를 위쪽에 그린다(윗변 = 총자산). data엔 총자산을 담아 선을 윗변에 둔다.
   if (showCash) {
     cashArr = rawCash.slice(lo, hi + 1);
-    const cashDs = { label: "현금 (예비)", data: cashArr, borderColor: cssVar("--cash"),
-      backgroundColor: cssVar("--cash-fill"), fill: "origin", tension: .2, pointRadius: 0, borderWidth: 1.5 };
-    valDs.data = value.map((v, i) => v + cashArr[i]);   // 윗변 = 총자산(평가+현금)
-    valDs.fill = { target: 0 };                          // 현금선까지 채움 = 평가금액 영역
-    datasets = [cashDs, valDs, costDs];
+    const cashDs = { label: "현금 (예비)", data: value.map((v, i) => v + cashArr[i]),
+      borderColor: cssVar("--cash"), backgroundColor: cssVar("--cash-fill"), fill: { target: 0 },
+      tension: .2, pointRadius: 0, borderWidth: 1.5 };
+    datasets = [valDs, cashDs, costDs];
   } else {
-    valDs.data = value;
-    valDs.fill = true;
     datasets = [valDs, costDs];
   }
   const data = { labels, datasets };
@@ -740,20 +760,19 @@ function renderChart() {
       legend: { display: false },
       title: { display: false },
       tooltip: { callbacks: {
-        // 켜짐 상태에선 평가금액 데이터가 '총자산'(윗변)이므로, 표시 땐 현금을 빼 순수 평가금액으로 환원.
-        label: c => (showCash && c.dataset.label === "평가금액")
-          ? "평가금액: " + won(c.parsed.y - cashArr[c.dataIndex])
+        // 켜짐 상태에선 현금(예비) 데이터가 '총자산'(윗변)이므로, 표시 땐 현금만 환원.
+        label: c => (showCash && c.dataset.label === "현금 (예비)")
+          ? "현금 (예비): " + won(cashArr[c.dataIndex])
           : c.dataset.label + ": " + won(c.parsed.y),
         afterBody: items => {
-          const top = items.find(i => i.dataset.label === "평가금액");  // y = 총자산(켜짐)/평가(꺼짐)
+          const vi = items.find(i => i.dataset.label === "평가금액");  // 항상 실제 평가금액
           const co = items.find(i => i.dataset.label === "투자원금")?.parsed.y;
           const lines = [];
-          if (top && co != null) {
-            const val = showCash ? top.parsed.y - cashArr[top.dataIndex] : top.parsed.y;
-            const diff = val - co;
+          if (vi && co != null) {
+            const diff = vi.parsed.y - co;
             lines.push("평가이익: " + signWon(diff) + " (" + pct(co ? diff / co * 100 : 0) + ")");
           }
-          if (showCash && top) lines.push("총자산: " + won(top.parsed.y));  // 윗변 = 평가 + 현금
+          if (showCash && vi) lines.push("총자산: " + won(vi.parsed.y + cashArr[vi.dataIndex]));  // 평가 + 현금
           return lines;
         },
       } },
@@ -780,66 +799,148 @@ function renderAsofBar() {
     <button onclick="selectedDate=null;renderAll()" style="margin-left:auto">현재로 돌아가기</button>`;
 }
 
+function setHoldingsView(v) { holdingsView = v; renderHoldings(); }
+
+// 보기 토글(계좌별/종목별) 마크업. 첫 헤더 이름 옆에 인라인으로 넣는다(현재 보기에 on 표시).
+const holdingsToggleHTML = () => `<span class="seg holdings-toggle" role="group" aria-label="보유 종목 보기">
+  <button class="seg-btn${holdingsView === "account" ? " on" : ""}" onclick="setHoldingsView('account')">계좌별</button>
+  <button class="seg-btn${holdingsView === "stock" ? " on" : ""}" onclick="setHoldingsView('stock')">종목별</button>
+</span>`;
+
+// 종목별 보기에서 '계좌 합산' 행을 펼치거나 접는다(계좌별 내역 하위 행).
+function toggleStock(tk) {
+  if (expandedStocks.has(tk)) expandedStocks.delete(tk); else expandedStocks.add(tk);
+  renderHoldings();
+}
+
+// 보유 종목 표 공용 헤더(선택일에 따라 '현재가'/'그날 종가').
+const holdingsThead = () => `<thead><tr>
+  <th class="name">종목</th><th>수량</th><th>평균단가</th><th>${isToday() ? "현재가" : effectiveDate() + " 종가"}</th>
+  <th>매입금액</th><th>평가금액</th><th>손익</th><th>수익률</th>
+</tr></thead>`;
+
+// 한 종목 행. nameExtra: 이름 옆 추가 태그(종목별 보기의 '계좌 합산' 등). trAttrs: <tr> 추가 속성.
+function holdingRow(r, d, prevHeld, staleTickers, nameExtra = "", trAttrs = "") {
+  const mv = priceDayMove(r.ticker, d, prevHeld.has(r.ticker));
+  const stale = staleAsOf(r.ticker, d);
+  if (stale) staleTickers.add(r.ticker);
+  const staleTag = stale
+    ? `<span class="stale-flag" title="${d} 종가가 아직 데이터 소스에 없어 ${stale} 종가를 표시 중입니다. 새로고침해도 소스에 해당일 봉이 없으면 그대로일 수 있습니다.">⚠ ${mdLabel(stale)} 종가</span>`
+    : "";
+  return `<tr ${trAttrs}>
+    <td class="name">${r.name}<span class="tag">${r.region}</span>${nameExtra}</td>
+    <td>${Math.round(r.shares).toLocaleString()}</td>
+    <td>${won(r.avg_price)}</td>
+    <td>${won(r.price)}${staleTag}<span class="dir ${mv.cls}">${mv.arrow}${mv.pct != null ? " " + pct(mv.pct) : ""}</span></td>
+    <td>${won(r.cost)}</td>
+    <td>${won(r.value)}</td>
+    <td class="${cls(r.pl)}">${signWon(r.pl)}</td>
+    <td class="${cls(r.pl)}">${pct(r.return_pct)}</td>
+  </tr>`;
+}
+
+// 펼친 계좌별 하위 행(종목별 보기). 종목 칸엔 계좌명, 나머지는 그 계좌 보유분.
+function holdingSubRow(p) {
+  return `<tr class="sub">
+    <td class="name">${p.account}</td>
+    <td>${Math.round(p.shares).toLocaleString()}</td>
+    <td>${won(p.avg_price)}</td>
+    <td>${won(p.price)}</td>
+    <td>${won(p.cost)}</td>
+    <td>${won(p.value)}</td>
+    <td class="${cls(p.pl)}">${signWon(p.pl)}</td>
+    <td class="${cls(p.pl)}">${pct(p.return_pct)}</td>
+  </tr>`;
+}
+
+// 합계 행(매입·평가·손익·수익률 + 선택 시 전일대비).
+function holdingsTotalRow(cost, val, dc) {
+  const pl = val - cost, ret = cost ? pl / cost * 100 : 0;
+  return `<tr class="total-row"><td class="name">합계</td><td></td><td></td><td></td>
+    <td>${won(cost)}</td><td>${won(val)}</td>
+    <td class="${cls(pl)}">${signWon(pl)}${dc ? `<div class="day-chg ${dayChangeCls(dc)}"><span class="day-lbl">전일대비</span> ${dayChangeWon(dc)}</div>` : ""}</td>
+    <td class="${cls(pl)}">${pct(ret)}${dc ? `<div class="day-chg ${dayChangeCls(dc)}">${dayChangePct(dc)}</div>` : ""}</td></tr>`;
+}
+
 function renderHoldings() {
   const d = effectiveDate();
   const pos = positionsOnDate(d);
-  const byAcc = {};
-  for (const p of pos) (byAcc[p.account] ??= []).push(p);
   const prevDay = prevTradingDay(d);
   const prevPos = prevDay ? positionsOnDate(prevDay) : [];
-  const byAccPrev = {};
-  for (const p of prevPos) (byAccPrev[p.account] ??= []).push(p);
-  const order = ACC_ORDER.filter(a => byAcc[a]);
-  if (!order.length) {
+  const banner = document.getElementById("staleBanner");
+  if (!pos.length) {
+    banner.innerHTML = "";
     document.getElementById("accounts").innerHTML = `<div class="loading">${d} 기준 보유 종목이 없습니다.</div>`;
     return;
   }
   const staleTickers = new Set();   // 이번 렌더에서 직전 거래일 종가로 끌어다 쓴(미갱신) 종목
-  let html = "";
-  for (const acc of order) {
-    const rows = byAcc[acc];
-    const aVal = rows.reduce((s, r) => s + r.value, 0);
-    const aCost = rows.reduce((s, r) => s + r.cost, 0);
+  const html = holdingsView === "stock"
+    ? renderHoldingsByStock(pos, prevPos, d, staleTickers)
+    : renderHoldingsByAccount(pos, prevPos, d, staleTickers);
+  // 신선도 경고는 토글과 겹치지 않도록 보유 표 위 별도 영역에 둔다.
+  banner.innerHTML = staleTickers.size
+    ? `<div class="stale-banner">⚠ ${staleTickers.size}개 종목은 ${isToday() ? "최신" : d} 종가가 아직 데이터 소스에 들어오지 않아
+      <b>직전 거래일 종가</b>로 표시 중입니다. 평가금액이 실제와 다를 수 있습니다.
+      잠시 후 새로고침하면 대개 채워집니다.</div>`
+    : "";
+  document.getElementById("accounts").innerHTML = html;
+}
+
+// 계좌별: 계좌마다 표 하나 + 계좌 합계.
+function renderHoldingsByAccount(pos, prevPos, d, staleTickers) {
+  const byAcc = {}, byAccPrev = {};
+  for (const p of pos) (byAcc[p.account] ??= []).push(p);
+  for (const p of prevPos) (byAccPrev[p.account] ??= []).push(p);
+  let html = "", first = true;
+  for (const acc of ACC_ORDER.filter(a => byAcc[a])) {
+    const rows = byAcc[acc].slice().sort((a, b) => b.value - a.value);
+    const aVal = rows.reduce((s, r) => s + r.value, 0), aCost = rows.reduce((s, r) => s + r.cost, 0);
     const aPl = aVal - aCost, aRet = aCost ? aPl / aCost * 100 : 0;
     const prevRows = byAccPrev[acc] ?? [];
     const dc = dayChange(prevRows, rows, d);
     const prevHeld = new Set(prevRows.map(r => r.ticker));
-    html += `<h2>${acc}<span class="acc-meta">${won(aVal)} · <span class="${cls(aPl)}">${pct(aRet)}</span></span></h2>`;
-    html += `<table><thead><tr>
-      <th class="name">종목</th><th>수량</th><th>평균단가</th><th>${isToday() ? "현재가" : d + " 종가"}</th>
-      <th>매입금액</th><th>평가금액</th><th>손익</th><th>수익률</th>
-    </tr></thead><tbody>`;
-    rows.sort((a, b) => b.value - a.value);
-    for (const r of rows) {
-      const mv = priceDayMove(r.ticker, d, prevHeld.has(r.ticker));
-      const stale = staleAsOf(r.ticker, d);
-      if (stale) staleTickers.add(r.ticker);
-      const staleTag = stale
-        ? `<span class="stale-flag" title="${d} 종가가 아직 데이터 소스에 없어 ${stale} 종가를 표시 중입니다. 새로고침해도 소스에 해당일 봉이 없으면 그대로일 수 있습니다.">⚠ ${mdLabel(stale)} 종가</span>`
-        : "";
-      html += `<tr>
-        <td class="name">${r.name}<span class="tag">${r.region}</span></td>
-        <td>${Math.round(r.shares).toLocaleString()}</td>
-        <td>${won(r.avg_price)}</td>
-        <td>${won(r.price)}${staleTag}<span class="dir ${mv.cls}">${mv.arrow}${mv.pct != null ? " " + pct(mv.pct) : ""}</span></td>
-        <td>${won(r.cost)}</td>
-        <td>${won(r.value)}</td>
-        <td class="${cls(r.pl)}">${signWon(r.pl)}</td>
-        <td class="${cls(r.pl)}">${pct(r.return_pct)}</td>
-      </tr>`;
+    html += `<h2>${acc}${first ? " " + holdingsToggleHTML() : ""}<span class="acc-meta">${won(aVal)} · <span class="${cls(aPl)}">${pct(aRet)}</span></span></h2>`;
+    first = false;
+    html += `<table>${holdingsThead()}<tbody>`;
+    for (const r of rows) html += holdingRow(r, d, prevHeld, staleTickers);
+    html += holdingsTotalRow(aCost, aVal, dc) + `</tbody></table>`;
+  }
+  return html;
+}
+
+// 종목별: 같은 티커를 모든 계좌에 걸쳐 합산해 한 표로. 여러 계좌면 '계좌 합산' 태그.
+function renderHoldingsByStock(pos, prevPos, d, staleTickers) {
+  const agg = {};
+  for (const p of pos) {
+    const b = agg[p.ticker] ??= { name: p.name, ticker: p.ticker, region: p.region,
+      shares: 0, cost: 0, value: 0, accounts: new Set(), parts: [] };
+    b.shares += p.shares; b.cost += p.cost; b.value += p.value;
+    b.accounts.add(p.account); b.parts.push(p);
+  }
+  const rows = Object.values(agg).map(r => ({ ...r,
+    avg_price: r.shares ? r.cost / r.shares : 0, price: r.shares ? r.value / r.shares : 0,
+    pl: r.value - r.cost, return_pct: r.cost ? (r.value - r.cost) / r.cost * 100 : 0,
+  })).sort((a, b) => b.value - a.value);
+  const tVal = rows.reduce((s, r) => s + r.value, 0), tCost = rows.reduce((s, r) => s + r.cost, 0);
+  const tPl = tVal - tCost, tRet = tCost ? tPl / tCost * 100 : 0;
+  const dc = dayChange(prevPos, pos, d);
+  const prevHeld = new Set(prevPos.map(r => r.ticker));
+  let html = `<h2>전체 종목 ${holdingsToggleHTML()}<span class="acc-meta">${won(tVal)} · <span class="${cls(tPl)}">${pct(tRet)}</span></span></h2>`;
+  html += `<table>${holdingsThead()}<tbody>`;
+  for (const r of rows) {
+    if (r.accounts.size > 1) {
+      // 여러 계좌 합산 → 클릭하면 계좌별 내역 펼침. 셰브론으로 펼침 상태 표시.
+      const exp = expandedStocks.has(r.ticker);
+      const tag = `<span class="tag merged"><span class="exp-chev${exp ? " open" : ""}">▸</span>${r.accounts.size}계좌 합산</span>`;
+      html += holdingRow(r, d, prevHeld, staleTickers, tag,
+        `class="merged-row" onclick="toggleStock('${r.ticker}')"`);
+      if (exp) for (const p of r.parts.slice().sort((a, b) => b.value - a.value)) html += holdingSubRow(p);
+    } else {
+      html += holdingRow(r, d, prevHeld, staleTickers);
     }
-    html += `<tr class="total-row"><td class="name">합계</td><td></td><td></td><td></td>
-      <td>${won(aCost)}</td><td>${won(aVal)}</td>
-      <td class="${cls(aPl)}">${signWon(aPl)}${dc ? `<div class="day-chg ${dayChangeCls(dc)}"><span class="day-lbl">전일대비</span> ${dayChangeWon(dc)}</div>` : ""}</td>
-      <td class="${cls(aPl)}">${pct(aRet)}${dc ? `<div class="day-chg ${dayChangeCls(dc)}">${dayChangePct(dc)}</div>` : ""}</td></tr></tbody></table>`;
   }
-  if (staleTickers.size) {
-    const dayWord = isToday() ? "최신" : d;
-    html = `<div class="stale-banner">⚠ ${staleTickers.size}개 종목은 ${dayWord} 종가가 아직 데이터 소스에 들어오지 않아
-      <b>직전 거래일 종가</b>로 표시 중입니다. 평가금액이 실제와 다를 수 있습니다.
-      잠시 후 새로고침하면 대개 채워집니다.</div>` + html;
-  }
-  document.getElementById("accounts").innerHTML = html;
+  html += holdingsTotalRow(tCost, tVal, dc) + `</tbody></table>`;
+  return html;
 }
 
 function renderRealized() {
