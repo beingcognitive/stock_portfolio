@@ -15,6 +15,8 @@
     --accent-bg: #20242e;                 /* 선택 알약/바 배경(악센트 틴트) */
     --accent-fill: rgba(255,167,38,.10);  /* 차트 평가금액 면 채움 */
     --accent-stroke: rgba(255,167,38,.35);/* 선택일 점선 가이드 */
+    /* 현금(예비) 띠: 악센트(주식)·초록/빨강(손익)과 구분되는 차분한 블루 */
+    --cash: #6f9bd8; --cash-fill: rgba(111,155,216,.22); --cash-bg: rgba(111,155,216,.12);
   }
   /* 라이트 모드: 같은 변수만 갈아끼운다(구조·간격 동일). 토글은 localStorage 기억. */
   body.light {
@@ -26,6 +28,7 @@
     --accent-bg: #fdf1e3;
     --accent-fill: rgba(239,122,16,.12);
     --accent-stroke: rgba(239,122,16,.40);
+    --cash: #4f7cc0; --cash-fill: rgba(79,124,192,.18); --cash-bg: rgba(79,124,192,.10);
   }
   * { box-sizing: border-box; }
   body {
@@ -129,6 +132,15 @@
   .chart-legend .sw { display: inline-block; width: 18px; border-top: 2px solid; vertical-align: middle; }
   .chart-legend .sw-val { border-top-color: var(--accent); }
   .chart-legend .sw-cost { border-top-color: var(--muted); border-top-style: dashed; }
+  /* 현금 띠는 면(area)이므로 선이 아닌 채워진 사각형 스와치로 표시 */
+  .chart-legend .sw-cash { border-top: none; width: 14px; height: 10px; border-radius: 2px;
+    background: var(--cash-fill); border: 1px solid var(--cash); }
+  /* 현금 레전드 = 토글 버튼: 평소엔 흐릿(꺼짐), 켜지면 또렷+블루. 다른 레전드는 항상 표시되는 라벨. */
+  .chart-legend .lg-cash { font: inherit; line-height: inherit; background: none; border: none;
+    border-radius: 0; padding: 0; cursor: pointer; color: var(--muted); opacity: .5;
+    transition: opacity .12s, color .12s; }
+  .chart-legend .lg-cash:hover { border: none; opacity: 1; }
+  .chart-legend .lg-cash.on { opacity: 1; color: var(--cash); }
   .year-sel { display: inline-flex; gap: 6px; }
   .yr { padding: 4px 12px; font-size: 12px; border-radius: 999px; }
   .yr.on { border-color: var(--accent); color: var(--accent); background: var(--accent-bg); }
@@ -193,6 +205,7 @@
       <span class="chart-legend">
         <span class="lg"><i class="sw sw-val"></i>평가금액</span>
         <span class="lg"><i class="sw sw-cost"></i>투자원금</span>
+        <button class="lg lg-cash" id="cashToggle" onclick="toggleCash()" aria-pressed="false" title="현금(예비)을 차트 바닥에 깔아 총자산까지 보기 (클릭해 켜고 끄기)"><i class="sw sw-cash"></i>현금 (예비)</button>
       </span>
       <div class="year-sel" id="yearSel"></div>
     </div>
@@ -276,6 +289,8 @@ let DATA, DAYS, DAYIDX, FFILL, ACC_ORDER;
 let selectedAccounts = new Set();   // 비어 있으면 전체
 let selectedDate = null;            // null = 마지막 거래일(현재)
 let selectedYear = null;            // null = 전체 기간
+let VIS = [];                       // 현재 차트에 보이는 거래일(연도 필터+트림). 스테퍼 이동 범위.
+let showCash = false;               // 차트에 현금(예비) 띠 + 총자산 선 표시 여부 (기본 꺼짐)
 let chart;
 
 // ---- 데이터 적재 + 전처리 ----
@@ -471,7 +486,8 @@ function realizedAsOf(dateStr) {
 }
 
 // ---- 렌더 ----
-function renderAll() { renderSummary(); renderAccountFilter(); renderYearSel(); renderChart(); renderAsofBar(); renderHoldings(); renderRealized(); }
+// renderChart 가 VIS(보이는 거래일)를 갱신하므로, 스테퍼를 그리는 renderAccountFilter 보다 먼저 돌린다.
+function renderAll() { renderSummary(); renderYearSel(); renderChart(); renderAccountFilter(); renderAsofBar(); renderHoldings(); renderRealized(); }
 
 // 선택된 계좌가 실제로 무언가 보유한 거래일이 있는 연도만 추린다.
 //   (필터 해제 시엔 전체 계좌 기준 → DAYS의 모든 연도.) 2026에만 거래가 있는 계좌를
@@ -499,7 +515,11 @@ function renderYearSel() {
     `<button class="yr${selectedYear === val ? " on" : ""}" onclick="setYear(${val ? `'${val}'` : "null"})">${label}</button>`
   ).join("");
 }
-function setYear(y) { selectedYear = y; renderYearSel(); renderChart(); }
+// 연도 필터 변경 → renderAll 로 VIS·스테퍼 경계까지 함께 갱신(필터 밖 화살표 비활성화 반영).
+function setYear(y) { selectedYear = y; renderAll(); }
+
+// 현금(예비) 띠 표시 토글. 차트만 다시 그리면 충분(요약·표는 영향 없음).
+function toggleCash() { showCash = !showCash; renderChart(); }
 
 function renderSummary() {
   const d = effectiveDate();
@@ -576,28 +596,35 @@ function renderAccountFilter() {
   document.getElementById("acctFilter").innerHTML = pills.join("");
 }
 
-// 거래일 이동 스테퍼(‹ 날짜 ›). 경계(첫·마지막 거래일)에선 해당 화살표를 비활성화한다.
-function dateNavHTML() {
-  if (!DAYS.length) return "";
+// 스테퍼는 차트에 보이는 거래일(VIS) 안에서만 이동한다 → 연도 필터를 켜면 그 구간의
+// 양끝에서 화살표가 비활성화되어 필터를 넘지 않는다('필터 유지, 끝에서 멈춤').
+// 선택일이 VIS 밖이면(예: 필터 2025 + 최신=2026) 구간 바로 바깥으로 간주해
+// 첫 화살표 입력에 구간 끝으로 진입하게 한다.
+function navIndex() {
   const cur = effectiveDate();
-  let i = DAYS.indexOf(cur);
-  if (i < 0) i = DAYS.length - 1;
-  const atFirst = i <= 0, atLast = i >= DAYS.length - 1, off = !isToday();
+  const i = VIS.indexOf(cur);
+  if (i >= 0) return i;
+  return cur > VIS[VIS.length - 1] ? VIS.length : -1;
+}
+
+// 거래일 이동 스테퍼(‹ 날짜 ›). VIS 양끝에서 해당 화살표를 비활성화한다.
+function dateNavHTML() {
+  if (!VIS.length) return "";
+  const i = navIndex();
+  const atFirst = i <= 0, atLast = i >= VIS.length - 1, off = !isToday();
   return `<div class="datenav" role="group" aria-label="거래일 이동">
     <button class="arw" onclick="stepDate(-1)" aria-label="이전 거래일"${atFirst ? " disabled" : ""}>‹</button>
-    <button class="cur${off ? " off" : ""}" onclick="gotoLatest()" title="${off ? "최신 거래일로" : "최신 거래일"}">${cur}</button>
+    <button class="cur${off ? " off" : ""}" onclick="gotoLatest()" title="${off ? "최신 거래일로" : "최신 거래일"}">${effectiveDate()}</button>
     <button class="arw" onclick="stepDate(1)" aria-label="다음 거래일"${atLast ? " disabled" : ""}>›</button>
   </div>`;
 }
 
 // 거래일 한 칸 이동(delta: -1 과거 / +1 미래). 마지막 칸은 '현재'(selectedDate=null)로 정규화.
 function stepDate(delta) {
-  if (!DAYS.length) return;
-  let i = DAYS.indexOf(effectiveDate());
-  if (i < 0) i = DAYS.length - 1;
-  const j = i + delta;
-  if (j < 0 || j >= DAYS.length) return;               // 경계 밖 → 무시
-  selectedDate = j === DAYS.length - 1 ? null : DAYS[j];
+  if (!VIS.length) return;
+  const j = navIndex() + delta;
+  if (j < 0 || j >= VIS.length) return;                // 가시 구간 경계 밖 → 무시
+  selectedDate = VIS[j] === DAYS[DAYS.length - 1] ? null : VIS[j];
   renderAll();
 }
 function gotoLatest() { if (selectedDate) { selectedDate = null; renderAll(); } }
@@ -653,13 +680,14 @@ const selDatePlugin = {
 function renderChart() {
   // 전 구간을 계산한 뒤, 앞뒤의 빈(0) 구간만 잘라낸다.
   // 중간의 0 일(전량 매도해 현금화한 날)은 그대로 둬서 딥이 보이게 한다.
-  const rawD = [], rawV = [], rawC = [];
+  const rawD = [], rawV = [], rawC = [], rawCash = [];
   for (const d of DAYS) {
     if (selectedYear && d.slice(0, 4) !== selectedYear) continue;
     const pos = positionsOnDate(d);
     rawD.push(d);
     rawV.push(pos.reduce((s, p) => s + p.value, 0));
     rawC.push(pos.reduce((s, p) => s + p.cost, 0));
+    rawCash.push(cashOnDate(d));
   }
   let lo = 0, hi = rawV.length - 1;
   while (lo <= hi && rawV[lo] <= 0) lo++;
@@ -667,22 +695,41 @@ function renderChart() {
   const labels = rawD.slice(lo, hi + 1);
   const value = rawV.slice(lo, hi + 1);
   const cost = rawC.slice(lo, hi + 1);
+  VIS = labels;                          // 스테퍼 이동 범위 = 차트에 실제로 보이는 거래일
   const selIdx = selectedDate ? labels.indexOf(selectedDate) : -1;
   // 차트 색은 CSS 변수에서 읽어 테마(다크/라이트)에 따라간다.
   const accent = cssVar("--accent"), muted = cssVar("--muted"),
         line = cssVar("--line"), fill = cssVar("--accent-fill"), bg = cssVar("--bg");
-  const data = { labels, datasets: [
-    { label: "평가금액", data: value, borderColor: accent, backgroundColor: fill,
-      fill: true, tension: .2, pointRadius: labels.map((_, i) => i === selIdx ? 7 : 0),
+  const valDs = { label: "평가금액", borderColor: accent, backgroundColor: fill,
+      tension: .2, pointRadius: labels.map((_, i) => i === selIdx ? 7 : 0),
       pointBackgroundColor: accent,
       pointHoverRadius: 5, pointHoverBackgroundColor: accent, pointHoverBorderColor: bg, pointHoverBorderWidth: 2,
       pointBorderColor: labels.map((_, i) => i === selIdx ? bg : "transparent"),
-      pointBorderWidth: labels.map((_, i) => i === selIdx ? 2.5 : 0), borderWidth: 2 },
-    { label: "투자원금", data: cost, borderColor: muted, borderDash: [5, 5],
-      fill: false, tension: .2, pointRadius: 0, borderWidth: 1.5 },
-  ]};
+      pointBorderWidth: labels.map((_, i) => i === selIdx ? 2.5 : 0), borderWidth: 2 };
+  const costDs = { label: "투자원금", data: cost, borderColor: muted, borderDash: [5, 5],
+      fill: false, tension: .2, pointRadius: 0, borderWidth: 1.5 };
+  let datasets, cashArr = null;
+  // 현금 토글: 현금(예비)을 바닥(0→현금)에 깔고, 평가금액을 그 위에 쌓아 윗변이 총자산이 되게 한다.
+  //   Chart.js 라인 스택은 점 위치를 누적하지 않으므로(축 범위만 누적) 직접 누계를 만들어
+  //   평가금액 선을 총자산값에 두고 현금선(0번)까지 채워 '평가금액 띠'를 그린다.
+  if (showCash) {
+    cashArr = rawCash.slice(lo, hi + 1);
+    const cashDs = { label: "현금 (예비)", data: cashArr, borderColor: cssVar("--cash"),
+      backgroundColor: cssVar("--cash-fill"), fill: "origin", tension: .2, pointRadius: 0, borderWidth: 1.5 };
+    valDs.data = value.map((v, i) => v + cashArr[i]);   // 윗변 = 총자산(평가+현금)
+    valDs.fill = { target: 0 };                          // 현금선까지 채움 = 평가금액 영역
+    datasets = [cashDs, valDs, costDs];
+  } else {
+    valDs.data = value;
+    valDs.fill = true;
+    datasets = [valDs, costDs];
+  }
+  const data = { labels, datasets };
   const filterLabel = selectedAccounts.size ? [...selectedAccounts].join(" + ") : "전체 계좌";
   document.getElementById("chartAcc").textContent = filterLabel;
+  // 현금 레전드 칩의 켜짐 상태를 동기화(항상 보이며, 켜지면 블루로 또렷).
+  const ct = document.getElementById("cashToggle");
+  ct.classList.toggle("on", showCash); ct.setAttribute("aria-pressed", showCash);
   const opts = {
     responsive: true, interaction: { mode: "index", intersect: false },
     onClick: (e, els, ch) => {
@@ -693,13 +740,21 @@ function renderChart() {
       legend: { display: false },
       title: { display: false },
       tooltip: { callbacks: {
-        label: c => c.dataset.label + ": " + won(c.parsed.y),
+        // 켜짐 상태에선 평가금액 데이터가 '총자산'(윗변)이므로, 표시 땐 현금을 빼 순수 평가금액으로 환원.
+        label: c => (showCash && c.dataset.label === "평가금액")
+          ? "평가금액: " + won(c.parsed.y - cashArr[c.dataIndex])
+          : c.dataset.label + ": " + won(c.parsed.y),
         afterBody: items => {
-          const v = items.find(i => i.dataset.label === "평가금액")?.parsed.y;
+          const top = items.find(i => i.dataset.label === "평가금액");  // y = 총자산(켜짐)/평가(꺼짐)
           const co = items.find(i => i.dataset.label === "투자원금")?.parsed.y;
-          if (v == null || co == null) return "";
-          const diff = v - co;
-          return "평가이익: " + signWon(diff) + " (" + pct(co ? diff / co * 100 : 0) + ")";
+          const lines = [];
+          if (top && co != null) {
+            const val = showCash ? top.parsed.y - cashArr[top.dataIndex] : top.parsed.y;
+            const diff = val - co;
+            lines.push("평가이익: " + signWon(diff) + " (" + pct(co ? diff / co * 100 : 0) + ")");
+          }
+          if (showCash && top) lines.push("총자산: " + won(top.parsed.y));  // 윗변 = 평가 + 현금
+          return lines;
         },
       } },
     },
