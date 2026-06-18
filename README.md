@@ -86,17 +86,23 @@ On-screen labels are Korean; below, the English term comes first with the Korean
   and total gain (unrealized + realized) separately.
 - **Account filter (pills)** : only accounts that hold something appear as pills. Click to filter to
   that account; **전체** (All) clears it. (Cash-only accounts have nothing to show, so they're left off.)
-- **Value curve** : daily market value vs. cost basis from your first purchase onward. A sold position
-  counts **only while you held it**; after the sale it moves to realized P/L. If you sold everything
-  before a given day, the curve drops to (near) zero that day — the real cash-out, shown as-is.
-- **Per-account holdings table** : per ticker — shares / average cost / current (or as-of-date close)
-  price / P/L / return %.
+  A **date stepper** (‹ date ›) at the right of this row moves through trading days one at a time.
+- **Value curve** : daily market value (평가금액) vs. cost basis (투자원금) from your first purchase
+  onward, with an optional **cash-reserve band** (현금 예비) drawn on top of market value — its upper edge
+  is net worth (총자산). A sold position counts **only while you held it**; after the sale it moves to
+  realized P/L. If you sold everything before a given day, the curve drops to (near) zero that day — the
+  real cash-out, shown as-is.
+- **Holdings table** : per ticker — shares / average cost / current (or as-of-date close) price / cost /
+  market value / P/L / return %. A **계좌별 / 종목별** (by-account / by-stock) toggle next to the first
+  heading switches between one table per account and a single table that merges each ticker across accounts.
 - **Realized P/L table** : completed sells/expirations and cumulative realized gain.
 
 **On-screen labels (Korean → English):** 종목 = name · 수량 = shares · 평균단가 = avg cost ·
-현재가 = current price · 매입금액 = cost · 평가금액 = market value · 손익 = P/L · 수익률 = return % ·
-합계 = total · 전일대비 = vs. prior day · 확정 수익 (실현) = realized P/L · 매수일 / 매도일 = buy / sell date ·
-매도금액 = proceeds · 새로고침 = Refresh · 전체 = All · 현재로 돌아가기 = Back to today.
+현재가 = current price · 투자원금 = cost basis · 매입금액 = cost · 평가금액 = market value ·
+현금 (예비) = reserve cash · 총자산 = net worth · 손익 = P/L · 수익률 = return % · 합계 = total ·
+계좌별 / 종목별 = by account / by stock · N계좌 합산 = merged across N accounts · 전일대비 = vs. prior day ·
+확정 수익 (실현) = realized P/L · 매수일 / 매도일 = buy / sell date · 매도금액 = proceeds ·
+새로고침 = Refresh · 전체 = All · 현재로 돌아가기 = Back to today.
 (Or just let your browser auto-translate the page.)
 
 ## Interactions
@@ -107,8 +113,18 @@ On-screen labels are Korean; below, the English term comes first with the Korean
   Use **현재로 돌아가기** (Back to today) in the top banner to return.
 - **Click an account pill** : filter to that account. Click several to combine (e.g. account A + B).
   Chart, tables, and realized P/L follow the selection. **전체** (All), or nothing selected, means everything.
+- **Date stepper (‹ date ›, right of the filter row)** : step one trading day at a time; the **← / →**
+  keys do the same. It stays within the visible range (so with a year filter on, it stops at that year's
+  edges), and the date in the middle doubles as "jump back to the latest day."
 - **Year selector (top-right of chart)** : All / per-year buttons zoom the curve to that year. Buttons
   are generated from the years present in your data. The Y-axis always starts at 0.
+- **Cash-reserve band (현금 예비 in the chart legend)** : click the legend chip to overlay your reserve
+  cash as a band on top of market value, so the curve's top edge reads as net worth (총자산). Off by
+  default. The reserve is **universal** — it shows on top of *any* account selection (see notes).
+- **Holdings view toggle (계좌별 / 종목별)** : switch the holdings between per-account tables and one
+  by-stock table. In **종목별**, a ticker held in several accounts gets an **N계좌 합산** tag and **expands
+  on click** into an indented per-account breakdown.
+- **Theme toggle (icon button, top-right header)** : flip light / dark; the choice is saved in the browser.
 
 All computation runs in the browser from a single `/api/data` fetch, so clicks/filters are instant.
 
@@ -159,7 +175,8 @@ The file's own header comments describe each field (in Korean); the English summ
   (e.g. `0185L0`) or failures fall back to `yfinance` (`.KS`).
 - Every position (held or closed) has a ticker, so it's valued at actual closes. If a given day's close
   is unavailable, it's forward-filled from the prior trading day's close; failing that, the tranche's
-  buy price is used.
+  buy price is used. Rows priced from a forward-filled close show a **⚠ stale** marker (and a banner),
+  so a not-yet-updated value never silently passes as final — this shows even in calm mode.
 
 ## Value curve to the console
 
@@ -196,9 +213,16 @@ The file's own header comments describe each field (in Korean); the English summ
   - For a closed trade with an unknown sale amount, estimate `proceeds` from the sell-date close (or the
     open, if sold near the open). Replace it once you have the exact figure.
   - Dividends are best left out of realized P/L to keep it simple (track separately if you want).
-- **Cash is a separate bucket** : reserve cash isn't mixed into cost basis / market value / return %,
-  only into **net worth (market value + cash)** and the asset flow. This keeps two different stories —
-  investment performance (return, P/L) and balance (net worth) — apart, so the same number never shows twice.
+- **Cash is a separate, universal bucket** : reserve cash isn't mixed into cost basis / market value /
+  return %, only into **net worth (market value + cash)**, the asset flow, and (when toggled on) the
+  chart's cash band. It lives in cash-only accounts that never hold stock, so it can't be picked as a
+  filter pill; the dashboard therefore treats it as **universal** — the full reserve shows on top of *any*
+  account selection, not just **전체**. This keeps two stories — investment performance (return, P/L) and
+  balance (net worth) — apart, so the same number never shows twice.
+- **By-stock view (종목별)** : aggregates each ticker across all accounts (summed shares / cost / value,
+  with average price and return recomputed); a ticker spanning multiple accounts carries an **N계좌 합산**
+  tag and expands to its per-account rows. The per-account view (**계좌별**) is the default. Both honor the
+  account filter and the selected date.
 - **Day-over-day (daily change) definition** : the "전일대비" line under the unrealized-P/L node and each
   account total is the **pure price move of positions held on *both* yesterday and today**, valued at the
   continuously-held share count (`min(yesterday, today)`), from the prior trading day's close to today's.
