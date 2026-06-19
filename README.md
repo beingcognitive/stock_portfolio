@@ -83,10 +83,8 @@ On-screen labels are Korean; below, the English term comes first with the Korean
 - **Asset flow (summary)** : reads left to right as Cost basis (투자원금) → (unrealized P/L) →
   **Market value (평가금액)** → (+ cash) → Net worth (총자산). **Market value** is the focus
   (yellow border); cash is just added on to reach net worth. The cash step (+ cash → 총자산) is tied
-  to the chart's cash-reserve toggle — on by default (the whole-portfolio view), so toggling cash off
-  ends the flow on **Market value**. Selecting a single account turns cash off to focus on its stocks;
-  **전체** (All) turns it back on. A line below shows realized P/L (확정수익) and total gain (unrealized +
-  realized) separately.
+  to the cash-reserve toggle (see below), so when cash is off the flow ends on **Market value**. A line
+  below shows realized P/L (확정수익) and total gain (unrealized + realized) separately.
 - **Account filter (pills)** : only accounts that hold something appear as pills. Click to filter to
   that account; **전체** (All) clears it. (Cash-only accounts have nothing to show, so they're left off.)
   A **date stepper** (‹ date ›) at the right of this row moves through trading days one at a time.
@@ -121,11 +119,17 @@ On-screen labels are Korean; below, the English term comes first with the Korean
   edges), and the date in the middle doubles as "jump back to the latest day."
 - **Year selector (top-right of chart)** : All / per-year buttons zoom the curve to that year. Buttons
   are generated from the years present in your data. The Y-axis always starts at 0.
-- **Cash-reserve band (현금 예비 in the chart legend)** : click the legend chip to overlay your reserve
-  cash as a band on top of market value, so the curve's top edge reads as net worth (총자산). The same
-  toggle also adds the **+ cash → 총자산 step to the summary flow**, so chart and summary stay in sync.
-  On by default; selecting a single account turns it off, **전체** (All) turns it back on. The reserve
-  is **universal** — it shows on top of *any* account selection (see notes).
+- **Cash-reserve toggle (현금 예비 in the chart legend)** : click the legend chip to overlay your reserve
+  cash as a band on top of market value, so the curve's top edge reads as net worth (총자산). One toggle
+  drives both views — the chart band **and** the summary's **+ cash → 총자산 step** flip together. It
+  follows a simple rule, and you can always override it by clicking the chip:
+  - **On by default** — the whole-portfolio landing view, where net worth (stocks + cash) is the point.
+  - **Entering a single-account filter from 전체 turns it off** — once you zoom into one account, the
+    focus is that account's stocks, so cash drops away. While you stay in filter mode (adding/removing
+    accounts) it keeps whatever you last set.
+  - **전체 (All) turns it back on** — clearing the filter returns to the whole-portfolio view.
+
+  The reserve is **universal** — it shows on top of *any* account selection (see notes).
 - **Holdings view toggle (계좌별 / 종목별)** : switch the holdings between per-account tables and one
   by-stock table. In **종목별**, a ticker held in several accounts gets an **N계좌 합산** tag and **expands
   on click** into an indented per-account breakdown.
