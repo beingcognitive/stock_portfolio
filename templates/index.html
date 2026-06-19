@@ -668,9 +668,9 @@ document.addEventListener("keydown", e => {
 });
 
 function toggleAccount(acc, ev) {
-  // 계좌 필터를 건드리면 현금(예비)은 끈다 → 필터의 의미(주식 구성)에 먼저 집중.
-  // 합산 값을 보고 싶으면 그 뒤에 현금 토글을 다시 켜면 된다(여전히 자유롭게 조정).
-  showCash = false;
+  // '전체 → 개별 계좌'로 처음 들어설 때만 현금(예비)을 끈다 → 필터의 의미(주식 구성)에 집중.
+  // 이미 필터 중일 땐 사용자가 켠 현금 상태를 건드리지 않는다(자유롭게 조정 유지).
+  if (selectedAccounts.size === 0) showCash = false;
   // Cmd+클릭 = "이 계좌만 선택": 나머지는 모두 해제한다.
   if (ev && ev.metaKey) {
     selectedAccounts = new Set([acc]);
