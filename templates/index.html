@@ -63,6 +63,10 @@
   .flow-node .val { font-size: 20px; font-weight: 700; margin-top: 4px; }
   .flow-node.total { flex: 1.4 1 0; border-color: var(--accent); }
   .flow-node.total .val { font-size: 26px; }
+  /* 차트 현금 레전드와 같은 토글(숨은 기능): 평가금액·총자산 노드 클릭 시 현금 합산 펼치고 접기 */
+  .flow-node.cash-toggle { cursor: pointer; transition: border-color .12s; }
+  .flow-node.cash-toggle:hover { border-color: var(--muted); }
+  .flow-node.total.cash-toggle:hover { border-color: var(--accent); }
   /* 연결 연산자(+37.7% / +현금) */
   .flow-op {
     display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -223,7 +227,7 @@
       <span class="chart-legend">
         <span class="lg"><i class="sw sw-val"></i>평가금액</span>
         <span class="lg"><i class="sw sw-cost"></i>투자원금</span>
-        <button class="lg lg-cash" id="cashToggle" onclick="toggleCash()" aria-pressed="false" title="현금(예비)을 차트 바닥에 깔고 요약에 총자산 스텝까지 더해 보기 (클릭해 켜고 끄기)"><i class="sw sw-cash"></i>현금 (예비)</button>
+        <button class="lg lg-cash on" id="cashToggle" onclick="toggleCash()" aria-pressed="true" title="현금(예비)을 차트 바닥에 깔고 요약에 총자산 스텝까지 더해 보기 (클릭해 켜고 끄기)"><i class="sw sw-cash"></i>현금 (예비)</button>
       </span>
       <div class="year-sel" id="yearSel"></div>
     </div>
@@ -309,7 +313,7 @@ let selectedAccounts = new Set();   // 비어 있으면 전체
 let selectedDate = null;            // null = 마지막 거래일(현재)
 let selectedYear = null;            // null = 전체 기간
 let VIS = [];                       // 현재 차트에 보이는 거래일(연도 필터+트림). 스테퍼 이동 범위.
-let showCash = false;               // 차트에 현금(예비) 띠 + 총자산 선 표시 여부 (기본 꺼짐)
+let showCash = true;                // 차트에 현금(예비) 띠 + 총자산 선 표시 여부 (기본 켜짐: 첫 로드 = 전체 포트폴리오)
 let holdingsView = "account";       // 보유 종목 보기: 'account'(계좌별) | 'stock'(종목별 합산)
 let expandedStocks = new Set();     // 종목별 보기에서 계좌 내역을 펼친 티커들
 let chart;
@@ -558,8 +562,10 @@ function renderSummary() {
   const net = value + cash;
   const totalGain = pl + realized;
 
-  const node = (label, valHtml, total) =>
-    `<div class="flow-node${total ? " total" : ""}"><div class="label">${label}</div>
+  // toggle=true 인 노드는 차트 현금 레전드와 동일하게 클릭 시 현금(예비)을 켜고 끈다(숨은 기능).
+  const node = (label, valHtml, total, toggle) =>
+    `<div class="flow-node${total ? " total" : ""}${toggle ? " cash-toggle" : ""}"${
+       toggle ? ` onclick="toggleCash()" title="${showCash ? "현금(예비) 합산을 접어 평가금액까지만 보기" : "현금(예비)을 더해 총자산까지 보기"}"` : ""}><div class="label">${label}</div>
        <div class="val">${valHtml}</div></div>`;
   const op = (label, cls_, ...vals) =>
     `<div class="flow-op"><span class="oplabel">${label}</span>
@@ -581,13 +587,13 @@ function renderSummary() {
   const parts = [
     node("투자원금", won(cost)),
     plOp,
-    node(valLabel, won(value), true),
+    node(valLabel, won(value), true, cash > 0),   // 현금 있으면 클릭으로 총자산 펼치기
   ];
   // 현금(예비) 합산 + 총자산 = '세 번째 스텝'. 차트 현금 토글이 켜졌을 때만 노출.
   if (cash > 0 && showCash) {
     parts.push(
       op("현금 (예비) 합산", "muted", signWon(cash)),
-      node("총자산 (평가 + 현금)", won(net)));
+      node("총자산 (평가 + 현금)", won(net), false, true));   // 클릭으로 다시 접기
   }
   // 누적 수익(profit) 한 줄: 미실현은 위 연산자에 있으므로 여기선 실현 + 총수익만.
   parts.push(
@@ -662,6 +668,9 @@ document.addEventListener("keydown", e => {
 });
 
 function toggleAccount(acc, ev) {
+  // 계좌 필터를 건드리면 현금(예비)은 끈다 → 필터의 의미(주식 구성)에 먼저 집중.
+  // 합산 값을 보고 싶으면 그 뒤에 현금 토글을 다시 켜면 된다(여전히 자유롭게 조정).
+  showCash = false;
   // Cmd+클릭 = "이 계좌만 선택": 나머지는 모두 해제한다.
   if (ev && ev.metaKey) {
     selectedAccounts = new Set([acc]);
@@ -680,7 +689,9 @@ function toggleAccount(acc, ev) {
   if (selectedAccounts.has(acc)) selectedAccounts.delete(acc); else selectedAccounts.add(acc);
   renderAll();
 }
-function clearAccounts() { selectedAccounts.clear(); renderAll(); }
+// 전체 = 필터 해제 → 포트폴리오 전체. 이땐 현금 합산(총자산)이 의미 있으므로 현금을 켠다
+// (개별 계좌 필터는 반대로 끈다 — toggleAccount 참고). 둘 다 이후 자유롭게 조정 가능.
+function clearAccounts() { showCash = true; selectedAccounts.clear(); renderAll(); }
 
 // 선택일에 옅은 점선 수직 가이드선을 그린다 (흰 테두리 점과 함께 선택일을 부각).
 const selDatePlugin = {
