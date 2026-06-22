@@ -179,6 +179,9 @@
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th, td { padding: 9px 10px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
   th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  th.sortable { cursor: pointer; user-select: none; transition: color .12s; }
+  th.sortable:hover { color: var(--txt); }
+  th .sort-arrow { font-size: 10px; color: var(--muted); }
   td.name, th.name { text-align: left; white-space: normal; }
   .tag { font-size: 11px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--line); color: var(--muted); margin-left: 6px; }
   .tag.sold { border-color: var(--down); color: var(--down); }
@@ -315,6 +318,7 @@ let selectedYear = null;            // null = 전체 기간
 let VIS = [];                       // 현재 차트에 보이는 거래일(연도 필터+트림). 스테퍼 이동 범위.
 let showCash = true;                // 차트에 현금(예비) 띠 + 총자산 선 표시 여부 (기본 켜짐: 첫 로드 = 전체 포트폴리오)
 let holdingsView = "account";       // 보유 종목 보기: 'account'(계좌별) | 'stock'(종목별 합산)
+let holdingsSort = { key: "value", dir: "desc" };  // 보유 표 정렬: key ∈ cost|value|pl|return_pct, dir ∈ asc|desc
 let expandedStocks = new Set();     // 종목별 보기에서 계좌 내역을 펼친 티커들
 let chart;
 
@@ -814,6 +818,18 @@ function renderAsofBar() {
 
 function setHoldingsView(v) { holdingsView = v; renderHoldings(); }
 
+// 정렬 가능한 숫자 열 헤더 클릭: 같은 열이면 방향 토글, 다른 열이면 그 열로 내림차순부터.
+function setHoldingsSort(key) {
+  if (holdingsSort.key === key) holdingsSort.dir = holdingsSort.dir === "desc" ? "asc" : "desc";
+  else holdingsSort = { key, dir: "desc" };
+  renderHoldings();
+}
+// 현재 정렬 기준으로 보유 행 정렬(원본 보존). 동률이면 평가금액 내림차순으로 안정화.
+function sortHoldings(rows) {
+  const { key, dir } = holdingsSort, s = dir === "asc" ? 1 : -1;
+  return rows.slice().sort((a, b) => (a[key] - b[key]) * s || b.value - a.value);
+}
+
 // 보기 토글(계좌별/종목별) 마크업. 첫 헤더 이름 옆에 인라인으로 넣는다(현재 보기에 on 표시).
 const holdingsToggleHTML = () => `<span class="seg holdings-toggle" role="group" aria-label="보유 종목 보기">
   <button class="seg-btn${holdingsView === "account" ? " on" : ""}" onclick="setHoldingsView('account')">계좌별</button>
@@ -827,9 +843,15 @@ function toggleStock(tk) {
 }
 
 // 보유 종목 표 공용 헤더(선택일에 따라 '현재가'/'그날 종가').
+// 정렬 가능한 숫자 열 헤더. 활성 열엔 방향 화살표(▼ 내림 / ▲ 오름)를 붙인다.
+function sortTh(key, label) {
+  const active = holdingsSort.key === key;
+  const arrow = active ? (holdingsSort.dir === "asc" ? " ↑" : " ↓") : "";
+  return `<th class="sortable" onclick="setHoldingsSort('${key}')" title="${label} 기준 정렬">${label}<span class="sort-arrow">${arrow}</span></th>`;
+}
 const holdingsThead = () => `<thead><tr>
   <th class="name">종목</th><th>수량</th><th>평균단가</th><th>${isToday() ? "현재가" : effectiveDate() + " 종가"}</th>
-  <th>매입금액</th><th>평가금액</th><th>손익</th><th>수익률</th>
+  ${sortTh("cost", "매입금액")}${sortTh("value", "평가금액")}${sortTh("pl", "손익")}${sortTh("return_pct", "수익률")}
 </tr></thead>`;
 
 // 한 종목 행. nameExtra: 이름 옆 추가 태그(종목별 보기의 '계좌 합산' 등). trAttrs: <tr> 추가 속성.
@@ -906,7 +928,7 @@ function renderHoldingsByAccount(pos, prevPos, d, staleTickers) {
   for (const p of prevPos) (byAccPrev[p.account] ??= []).push(p);
   let html = "", first = true;
   for (const acc of ACC_ORDER.filter(a => byAcc[a])) {
-    const rows = byAcc[acc].slice().sort((a, b) => b.value - a.value);
+    const rows = sortHoldings(byAcc[acc]);
     const aVal = rows.reduce((s, r) => s + r.value, 0), aCost = rows.reduce((s, r) => s + r.cost, 0);
     const aPl = aVal - aCost, aRet = aCost ? aPl / aCost * 100 : 0;
     const prevRows = byAccPrev[acc] ?? [];
@@ -930,10 +952,10 @@ function renderHoldingsByStock(pos, prevPos, d, staleTickers) {
     b.shares += p.shares; b.cost += p.cost; b.value += p.value;
     b.accounts.add(p.account); b.parts.push(p);
   }
-  const rows = Object.values(agg).map(r => ({ ...r,
+  const rows = sortHoldings(Object.values(agg).map(r => ({ ...r,
     avg_price: r.shares ? r.cost / r.shares : 0, price: r.shares ? r.value / r.shares : 0,
     pl: r.value - r.cost, return_pct: r.cost ? (r.value - r.cost) / r.cost * 100 : 0,
-  })).sort((a, b) => b.value - a.value);
+  })));
   const tVal = rows.reduce((s, r) => s + r.value, 0), tCost = rows.reduce((s, r) => s + r.cost, 0);
   const tPl = tVal - tCost, tRet = tCost ? tPl / tCost * 100 : 0;
   const dc = dayChange(prevPos, pos, d);
@@ -947,7 +969,7 @@ function renderHoldingsByStock(pos, prevPos, d, staleTickers) {
       const tag = `<span class="tag merged"><span class="exp-chev${exp ? " open" : ""}">▸</span>${r.accounts.size}계좌 합산</span>`;
       html += holdingRow(r, d, prevHeld, staleTickers, tag,
         `class="merged-row" onclick="toggleStock('${r.ticker}')"`);
-      if (exp) for (const p of r.parts.slice().sort((a, b) => b.value - a.value)) html += holdingSubRow(p);
+      if (exp) for (const p of sortHoldings(r.parts)) html += holdingSubRow(p);
     } else {
       html += holdingRow(r, d, prevHeld, staleTickers);
     }
