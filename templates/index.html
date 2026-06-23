@@ -675,9 +675,9 @@ function toggleAccount(acc, ev) {
   // '전체 → 개별 계좌'로 처음 들어설 때만 현금(예비)을 끈다 → 필터의 의미(주식 구성)에 집중.
   // 이미 필터 중일 땐 사용자가 켠 현금 상태를 건드리지 않는다(자유롭게 조정 유지).
   if (selectedAccounts.size === 0) showCash = false;
-  // Cmd+클릭 = "이 계좌만 선택": 나머지는 모두 해제한다.
-  if (ev && ev.metaKey) {
-    selectedAccounts = new Set([acc]);
+  // Cmd/Ctrl+클릭 = 토글: 이 계좌를 선택에 더하거나 뺀다(여러 계좌 조합).
+  if (ev && (ev.metaKey || ev.ctrlKey)) {
+    if (selectedAccounts.has(acc)) selectedAccounts.delete(acc); else selectedAccounts.add(acc);
     renderAll();
     return;
   }
@@ -690,7 +690,8 @@ function toggleAccount(acc, ev) {
     renderAll();
     return;
   }
-  if (selectedAccounts.has(acc)) selectedAccounts.delete(acc); else selectedAccounts.add(acc);
+  // 그냥 클릭 = "이 계좌만 선택": 나머지는 모두 해제한다.
+  selectedAccounts = new Set([acc]);
   renderAll();
 }
 // 전체 = 필터 해제 → 포트폴리오 전체. 이땐 현금 합산(총자산)이 의미 있으므로 현금을 켠다

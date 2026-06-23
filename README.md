@@ -112,8 +112,9 @@ On-screen labels are Korean; below, the English term comes first with the Korean
   date. (Positions held that day — including ones later sold — are valued at that day's close.) The
   selected day shows a **white-bordered dot + faint dotted vertical line**; hovering shows a small ring.
   Use **현재로 돌아가기** (Back to today) in the top banner to return.
-- **Click an account pill** : filter to that account. Click several to combine (e.g. account A + B).
-  Chart, tables, and realized P/L follow the selection. **전체** (All), or nothing selected, means everything.
+- **Click an account pill** : filter to that account only. **Cmd/Ctrl+click** toggles a pill in or out
+  of the selection, so you can combine several (e.g. account A + B). Chart, tables, and realized P/L
+  follow the selection. **전체** (All), or nothing selected, means everything.
 - **Date stepper (‹ date ›, right of the filter row)** : step one trading day at a time; the **← / →**
   keys do the same. It stays within the visible range (so with a year filter on, it stops at that year's
   edges), and the date in the middle doubles as "jump back to the latest day."
