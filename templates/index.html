@@ -661,7 +661,14 @@ function stepDate(delta) {
   selectedDate = VIS[j] === DAYS[DAYS.length - 1] ? null : VIS[j];
   renderAll();
 }
-function gotoLatest() { if (selectedDate) { selectedDate = null; renderAll(); } }
+// '현재로' 복귀: 최신 거래일이 현재 연도 필터 밖이면(예: 필터 2025, 최신=2026) 필터를
+// 풀어 차트가 현재까지 보이게 한다. 필터가 이미 최신 연도면 그대로 둔다.
+function gotoLatest() {
+  const latestYear = DAYS[DAYS.length - 1].slice(0, 4);
+  if (selectedYear && selectedYear !== latestYear) selectedYear = null;
+  selectedDate = null;
+  renderAll();
+}
 
 // ←/→ 로도 거래일 이동(입력 요소 포커스 중엔 무시).
 document.addEventListener("keydown", e => {
@@ -814,7 +821,7 @@ function renderAsofBar() {
   const pos = positionsOnDate(d);
   const value = pos.reduce((s, p) => s + p.value, 0);
   bar.innerHTML = `📅 <b>${d}</b> 기준 보유 내역 · 평가 ${won(value)}
-    <button onclick="selectedDate=null;renderAll()" style="margin-left:auto">현재로 돌아가기</button>`;
+    <button onclick="gotoLatest()" style="margin-left:auto">현재로 돌아가기</button>`;
 }
 
 function setHoldingsView(v) { holdingsView = v; renderHoldings(); }
