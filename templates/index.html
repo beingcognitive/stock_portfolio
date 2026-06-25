@@ -18,6 +18,7 @@
     /* 현금(예비) 띠: 악센트(주식)·초록/빨강(손익)과 구분되는 차분한 블루 */
     --cash: #6f9bd8; --cash-fill: rgba(111,155,216,.22); --cash-bg: rgba(111,155,216,.12);
     --ov: #2db5a3;   /* 해외/글로벌 카테고리색(틸). 손익(초록/빨강)·하락(파랑) 시그널과 분리 */
+    --def: #8b7fe0; --def2: #b6abf0;   /* 방산(바이올렛)/조선(연바이올렛) 카테고리색 */
   }
   /* 라이트 모드: 같은 변수만 갈아끼운다(구조·간격 동일). 토글은 localStorage 기억. */
   body.light {
@@ -31,6 +32,7 @@
     --accent-stroke: rgba(239,122,16,.40);
     --cash: #4f7cc0; --cash-fill: rgba(79,124,192,.18); --cash-bg: rgba(79,124,192,.10);
     --ov: #0f9e8c;   /* 해외/글로벌 카테고리색(틸, 라이트테마용) */
+    --def: #6c5fd0; --def2: #9486e0;   /* 방산/조선 카테고리색(라이트테마용) */
   }
   * { box-sizing: border-box; }
   body {
@@ -227,6 +229,7 @@
   .wbar-track { height: 14px; background: var(--line); border-radius: 4px; overflow: hidden; }
   .wbar-fill { height: 100%; border-radius: 4px; min-width: 2px; transition: width .25s ease; }
   .wbar-fill.kr { background: var(--accent); } .wbar-fill.ov { background: var(--ov); }
+  .wbar-fill.def { background: var(--def); } .wbar-fill.def2 { background: var(--def2); }
   .wbar-fill.na { background: var(--muted); opacity: .55; }
   /* 값 컬럼: 금액(굵게) 위, % 아래. 우측 정렬 + tabular-nums 로 자리수 정렬. */
   .wbar-val { text-align: right; line-height: 1.25; font-variant-numeric: tabular-nums; }
@@ -252,16 +255,14 @@
   .semi-sub .val { grid-column: 3; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .semi-sub .val b { color: var(--txt); font-weight: 700; }
   .semi-toggle { flex: 0 0 auto; margin-left: 12px; }
-  /* 반도체 집중도 토글 ON 시: 종목 비중 ↔ 반도체 집중도를 좌우 2단으로(밀도↑, ETF→투과 대비).
-     좁은 화면(≤900px)에선 자동으로 위아래 1단. 카드 자체 마진은 그리드 gap 으로 대체. */
-  .charts-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; margin: 0 0 18px; }
-  .charts-2col > .wbars, .charts-2col > .semi-box { margin: 0; }
-  @media (max-width: 900px) { .charts-2col { grid-template-columns: 1fr; } }
-  /* 분석 바: 표와 카드 사이. 토글을 카드 바로 위에 둬 컨트롤↔대상을 붙인다. */
-  .analysis-bar { display: flex; align-items: center; gap: 8px; margin: 18px 0 10px; }
+  /* 섹터 집중도 분석 영역: 종목 비중 + 활성 섹터 카드를 반응형 그리드로(밀도↑, ETF→투과 대비).
+     auto-fit 이라 화면 폭에 따라 1~3열로 자동 흐름. 카드 자체 마진은 그리드 gap 으로 대체. */
+  .charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; align-items: start; margin: 0 0 18px; }
+  .charts-grid > .wbars, .charts-grid > .semi-box { margin: 0; }
+  /* 분석 바: 표와 카드 사이. 토글을 카드 바로 위에 둬 컨트롤↔대상을 붙인다(여러 섹터면 우측에 나열). */
+  .analysis-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 18px 0 10px; }
   .analysis-label { font-size: 13px; font-weight: 700; color: var(--txt); }
-  .analysis-bar .semi-toggle { margin-left: auto; }
-  .analysis-bar + .wbars { margin-top: 0; }
+  .analysis-bar .semi-toggle:first-of-type { margin-left: auto; }
   @media (max-width: 560px) { :root { --wb-name: 104px; --wb-val: 100px; } .wbar-row, .semi-sub { column-gap: 9px; } .wbar-name { font-size: 11px; } }
 </style>
 </head>
@@ -317,6 +318,7 @@ const cssVar = n => getComputedStyle(document.body).getPropertyValue(n).trim();
 // 그 선택을 localStorage 에 기억해 새로고침/재시작 뒤에도 유지한다(서버 기본값보다 우선).
 const CALM_DEFAULT = {{ 'true' if not show_daily else 'false' }};  // true = 전일대비 숨김
 const SHOW_SEMI = {{ 'true' if show_semi else 'false' }};  // 반도체 집중도 섹션 표시(서버 --semi)
+const SHOW_DEFENSE = {{ 'true' if show_defense else 'false' }};  // 방산·조선 집중도 섹션 표시(서버 --defense)
 const CALM_KEY = "calmMode";
 function readCalmPref() { try { return localStorage.getItem(CALM_KEY); } catch (e) { return null; } }
 function writeCalmPref(v) { try { localStorage.setItem(CALM_KEY, v); } catch (e) {} }
@@ -379,8 +381,8 @@ let showCash = true;                // 차트에 현금(예비) 띠 + 총자산 
 let holdingsView = "account";       // 보유 종목 보기: 'account'(계좌별) | 'stock'(종목별 합산)
 let holdingsSort = { key: "value", dir: "desc" };  // 보유 표 정렬: key ∈ cost|value|pl|return_pct, dir ∈ asc|desc
 let expandedStocks = new Set();     // 종목별 보기에서 계좌 내역을 펼친 티커들
-// 반도체 집중도 섹션 표시 여부(--semi 모드에서만 토글 노출). 선택은 localStorage 기억.
-let showSemiBox = (() => { try { return localStorage.getItem("semiBox") !== "off"; } catch (e) { return true; } })();
+// 섹터 집중도 패널 표시 여부(해당 --플래그 모드에서만 토글 노출). 선택은 localStorage 기억.
+const sectorShow = (k) => { try { return localStorage.getItem(k + "Box") !== "off"; } catch (e) { return true; } };
 let chart;
 
 // ---- 데이터 적재 + 전처리 ----
@@ -905,14 +907,13 @@ const holdingsToggleHTML = () => `<span class="seg holdings-toggle" role="group"
   <button class="seg-btn${holdingsView === "stock" ? " on" : ""}" onclick="setHoldingsView('stock')">종목별</button>
 </span>`;
 
-// 반도체 집중도 섹션 표시 토글(우측). --semi 모드 + 종목별 보기에서만 노출.
-const semiToggleHTML = () => SHOW_SEMI
-  ? `<span class="seg semi-toggle"><button class="seg-btn${showSemiBox ? " on" : ""}"
-       onclick="toggleSemiBox()" title="반도체 집중도 섹션 표시/숨김">🔬 반도체 집중도</button></span>`
-  : "";
-function toggleSemiBox() {
-  showSemiBox = !showSemiBox;
-  try { localStorage.setItem("semiBox", showSemiBox ? "on" : "off"); } catch (e) {}
+// 섹터 집중도 패널 표시 토글(분석 바). 활성화된(--플래그) 섹터마다 하나씩.
+const sectorToggleHTML = (p) =>
+  `<span class="seg semi-toggle"><button class="seg-btn${sectorShow(p.key) ? " on" : ""}"
+     onclick="toggleSector('${p.key}')" title="${p.toggleLabel} 표시/숨김">${p.toggleLabel}</button></span>`;
+function toggleSector(key) {
+  const cur = sectorShow(key);
+  try { localStorage.setItem(key + "Box", cur ? "off" : "on"); } catch (e) {}
   renderHoldings();
 }
 
@@ -1048,65 +1049,90 @@ function weightBarsHTML(rows, tVal) {
   </div>`;
 }
 
-// 반도체 집중도(look-through): 저장된 ETF별 반도체 비중(etf_semi_weights.yaml)을
-// 실시간 평가금액에 곱해 삼성전자/SK하이닉스/기타 반도체 노출을 환산한다.
-function semiConcentration(rows) {
-  const W = DATA.semi_weights || {};
+// 섹터 집중도(look-through): 저장된 ETF별 섹터 비중을 실시간 평가금액에 곱해 환산한다.
+// semi(반도체)·defense(방산·조선) 등 여러 섹터가 같은 엔진/그리드를 공유한다.
+function sectorConcentration(rows, weightsKey, bucketKeys) {
+  const W = DATA[weightsKey] || {};
   const code = {};   // ticker -> krx_code
   for (const l of DATA.lots) if (l.krx_code) code[l.ticker] = l.krx_code;
   for (const c of DATA.closed) if (c && c.krx_code) code[c.ticker] = c.krx_code;
-  const B = { "삼성전자": 0, "SK하이닉스": 0, "한국기타반도체": 0, "글로벌반도체": 0 };
-  let semi = 0, total = 0;
+  const B = {}; bucketKeys.forEach(k => B[k] = 0);
+  let inSector = 0, total = 0;
   for (const r of rows) {
     total += r.value;
     const w = W[code[r.ticker]];
     if (!w) continue;
-    for (const k in B) { const part = r.value * ((w[k] || 0) / 100); B[k] += part; semi += part; }
+    for (const k of bucketKeys) { const part = r.value * ((w[k] || 0) / 100); B[k] += part; inSector += part; }
   }
-  return { B, semi, total };
+  return { B, inSector, total };
 }
 
-// 반도체 집중도 박스. 종목 비중과 동일한 .wbar-row 그리드(라벨 | 막대 | 값)를 공유해
-// 칼같이 정렬한다. 길게 어긋나던 분할막대(.semi-split)는 제거했고, 각 행의 값 컬럼은
-// 금액(굵게)+% 2단. 막대·%는 모두 전체 평가금액 대비 절대 스케일.
-function semiBoxHTML(rows) {
-  const W = DATA.semi_weights || {};
-  if (!W || !Object.keys(W).length) return "";   // 비중 데이터 없으면 섹션 생략
-  const { B, semi, total } = semiConcentration(rows);
+// 활성화(--플래그)된 섹터 패널 설정. 종목 비중과 동일한 .wbar-row 그리드를 공유.
+const SECTOR_PANELS = [
+  {
+    key: "semi", show: () => SHOW_SEMI, weightsKey: "semi_weights", asofKey: "semi_weights_asof",
+    toggleLabel: "🔬 반도체 집중도", title: "🔬 반도체 집중도 (look-through)", asofTail: "국내 자동·해외 수동",
+    totalLabel: "전체 반도체 노출", remainderLabel: "비반도체", refreshHint: "반도체 국내 비중",
+    buckets: [
+      { label: "삼성전자", k: "삼성전자", cls: "kr" },
+      { label: "SK하이닉스", k: "SK하이닉스", cls: "kr" },
+      { label: "한국 기타 반도체", k: "한국기타반도체", cls: "kr" },
+      { label: "글로벌 반도체", k: "글로벌반도체", cls: "ov" },
+    ],
+    subtotal: { label: "└ 삼성+하이닉스 합 (위 두 종목 소계)", ks: ["삼성전자", "SK하이닉스"], warnAt: 35,
+      warn: (pct) => `⚠ 삼성전자+SK하이닉스가 평가금액의 <b>${pct}%</b> — 단 2개 종목에 대한 집중이 큽니다. 한 종목을 직접 더 사기 전에 이 수치부터 보세요.` },
+    note: `막대·%는 모두 <b>전체 평가금액 대비</b>입니다 — 반도체 4개 + 비반도체 = 100%. '삼성+하이닉스 합'은 위 두 종목의 소계(중복)라 합산에서 제외. 'RISE 삼성전자SK하이닉스'(주식50/채권50)는 주식분만 두 종목으로 반영. 비중 추정치는 <code>etf_semi_weights.yaml</code>에서 갱신.`,
+  },
+  {
+    key: "defense", show: () => SHOW_DEFENSE, weightsKey: "defense_weights", asofKey: "defense_weights_asof",
+    toggleLabel: "🛡 방산·조선", title: "🛡 방산·조선 집중도 (look-through)", asofTail: "국내 자동",
+    totalLabel: "전체 방산·조선 노출", remainderLabel: "기타", refreshHint: "방산·조선 국내 비중",
+    buckets: [
+      { label: "방산", k: "방산", cls: "def" },
+      { label: "조선", k: "조선", cls: "def2" },
+    ],
+    subtotal: { label: "└ 방산+조선 합 (소계)", ks: ["방산", "조선"], warnAt: null },
+    note: `막대·%는 모두 <b>전체 평가금액 대비</b>입니다 — 방산·조선 + 기타 = 100%. 방산·조선이 없는 ETF는 0. 비중 추정치는 <code>etf_defense_weights.yaml</code>에서 갱신(국내는 <code>refresh_sector_weights.py</code> 자동). TOP10 기준이라 11위 밖은 누락될 수 있음.`,
+  },
+];
+
+// 섹터 집중도 박스. 종목 비중과 동일한 .wbar-row 그리드(라벨 | 막대 | 값)를 공유해 칼정렬.
+// 각 행 값 컬럼은 금액(굵게)+% 2단. 막대·%는 모두 전체 평가금액 대비 절대 스케일.
+function sectorBoxHTML(rows, cfg) {
+  const W = DATA[cfg.weightsKey] || {};
+  if (!W || !Object.keys(W).length) return "";   // 비중 데이터 없으면 패널 생략
+  const bucketKeys = cfg.buckets.map(b => b.k);
+  const { B, inSector, total } = sectorConcentration(rows, cfg.weightsKey, bucketKeys);
   if (!total) return "";
   const p = v => total ? v / total * 100 : 0;
-  const sshy = B["삼성전자"] + B["SK하이닉스"];
-  // 한 막대 행 = 그리드 3컬럼. strong=라벨·금액 강조(현재 미사용이나 일관성 위해 인자 유지).
-  const bar = (label, val, cl, strong) => {
-    const rowCl = strong ? "wbar-row is-strong" : "wbar-row";
-    return `<div class="${rowCl}">
+  const bar = (label, val, cl) => `<div class="wbar-row">
       <div class="wbar-name" title="${label}">${label}</div>
       <div class="wbar-track"><div class="wbar-fill ${cl}" style="width:${p(val).toFixed(2)}%"></div></div>
       <div class="wbar-val"><span class="amt">${won(val)}</span><span class="pct">${p(val).toFixed(1)}%</span></div></div>`;
-  };
-  const warn = p(sshy) >= 35
-    ? `<div class="semi-warn">⚠ 삼성전자+SK하이닉스가 평가금액의 <b>${p(sshy).toFixed(1)}%</b> — 단 2개 종목에 대한 집중이 큽니다. 한 종목을 직접 더 사기 전에 이 수치부터 보세요.</div>`
-    : "";
-  // ① 신선도 경고: 비중 기준일이 오래되면(>45일) 갱신을 권한다(자동화 실패 백스톱).
-  const asof = DATA.semi_weights_asof || "";
+  const st = cfg.subtotal;
+  const sub = st.ks.reduce((s, k) => s + (B[k] || 0), 0);
+  const subRow = `<div class="semi-sub"><span class="cap">${st.label}</span><span class="val"><b>${won(sub)}</b> · ${p(sub).toFixed(1)}%</span></div>`;
+  const warn = (st.warnAt != null && p(sub) >= st.warnAt) ? `<div class="semi-warn">${st.warn(p(sub).toFixed(1))}</div>` : "";
+  const asof = DATA[cfg.asofKey] || "";
   let stale = "";
   if (asof) {
     const age = Math.floor((Date.now() - new Date(asof + "T00:00:00")) / 86400000);
-    if (age > 45) stale = `<div class="semi-warn">🕐 비중 데이터가 <b>${age}일</b> 경과(${asof} 기준). <code>python refresh_semi_weights.py</code> 로 국내 비중을 갱신하세요.</div>`;
+    if (age > 45) stale = `<div class="semi-warn">🕐 비중 데이터가 <b>${age}일</b> 경과(${asof} 기준). <code>python refresh_sector_weights.py</code> 로 ${cfg.refreshHint}를 갱신하세요.</div>`;
   }
-  const nonSemi = total - semi;   // 비반도체 잔여 → 막대들이 전체 평가금액 100%로 합산되게 한다
+  // 막대 행: 버킷들 + 소계 캡션(소계 마지막 종목 아래) + 잔여(기타) 막대 → 전체 100%.
+  let bars = "";
+  cfg.buckets.forEach(b => {
+    bars += bar(b.label, B[b.k], b.cls);
+    if (st.ks.length && b.k === st.ks[st.ks.length - 1]) bars += subRow;
+  });
+  bars += bar(cfg.remainderLabel, total - inSector, "na");
   return `<div class="semi-box">
-    <div class="semi-head">🔬 반도체 집중도 (look-through)<span class="semi-asof">· ETF 구성 추정 기준 ${asof || "-"} · 국내 자동·해외 수동</span></div>
+    <div class="semi-head">${cfg.title}<span class="semi-asof">· ETF 구성 추정 기준 ${asof || "-"} · ${cfg.asofTail}</span></div>
     ${stale}
-    <div class="semi-total"><span class="lbl">전체 반도체 노출</span><span class="val"><b>${won(semi)}</b><span class="pctbig">${p(semi).toFixed(1)}%</span></span></div>
-    ${bar("삼성전자", B["삼성전자"], "kr")}
-    ${bar("SK하이닉스", B["SK하이닉스"], "kr")}
-    <div class="semi-sub"><span class="cap">└ 삼성+하이닉스 합 (위 두 종목 소계)</span><span class="val"><b>${won(sshy)}</b> · ${p(sshy).toFixed(1)}%</span></div>
-    ${bar("한국 기타 반도체", B["한국기타반도체"], "kr")}
-    ${bar("글로벌 반도체", B["글로벌반도체"], "ov")}
-    ${bar("비반도체", nonSemi, "na")}
+    <div class="semi-total"><span class="lbl">${cfg.totalLabel}</span><span class="val"><b>${won(inSector)}</b><span class="pctbig">${p(inSector).toFixed(1)}%</span></span></div>
+    ${bars}
     ${warn}
-    <div class="semi-note">막대·%는 모두 <b>전체 평가금액 대비</b>입니다 — 반도체 4개 + 비반도체 = 100%. '삼성+하이닉스 합'은 위 두 종목의 소계(중복)라 합산에서 제외. 'RISE 삼성전자SK하이닉스'(주식50/채권50)는 주식분만 두 종목으로 반영. 비중 추정치는 <code>etf_semi_weights.yaml</code>에서 갱신.</div>
+    <div class="semi-note">${cfg.note}</div>
   </div>`;
 }
 
@@ -1142,13 +1168,14 @@ function renderHoldingsByStock(pos, prevPos, d, staleTickers) {
     }
   }
   html += holdingsTotalRow(tCost, tVal, dc) + `</tbody></table>`;
-  // 표 다음 = 분석 영역. --semi 모드면 토글을 카드 바로 위 '분석 바'에 둔다(컨트롤↔대상 인접).
-  // 토글 ON 이면 종목 비중 ↔ 반도체 집중도 좌우 2단, OFF 면 종목 비중만 전체폭.
-  if (SHOW_SEMI) {
-    html += `<div class="analysis-bar"><span class="analysis-label">분석</span>${semiToggleHTML()}</div>`;
-    html += showSemiBox
-      ? `<div class="charts-2col">${weightBarsHTML(rows, tVal)}${semiBoxHTML(rows)}</div>`
-      : weightBarsHTML(rows, tVal);
+  // 표 다음 = 분석 영역. 활성(--플래그)된 섹터마다 토글을 카드 바로 위 '분석 바'에 둔다
+  // (컨트롤↔대상 인접). 종목 비중 + 켜진 섹터 카드들이 반응형 그리드로 흐른다.
+  const active = SECTOR_PANELS.filter(p => p.show());
+  if (active.length) {
+    html += `<div class="analysis-bar"><span class="analysis-label">분석</span>${active.map(sectorToggleHTML).join("")}</div>`;
+    const cards = [weightBarsHTML(rows, tVal)];
+    for (const p of active) if (sectorShow(p.key)) { const box = sectorBoxHTML(rows, p); if (box) cards.push(box); }
+    html += `<div class="charts-grid">${cards.join("")}</div>`;
   } else {
     html += weightBarsHTML(rows, tVal);
   }
