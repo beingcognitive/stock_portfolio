@@ -10,10 +10,17 @@ valuation, realized P/L, and a daily market-value curve from your first purchase
 
 ## Preview
 
-![Portfolio dashboard](docs/screenshot.png)
+**By account (default)** — asset-flow summary, value curve, per-account holdings, realized P/L:
 
-> The screenshot uses the bundled **sample data** (`transactions.example.yaml`), not real holdings.
-> Run it yourself and the same screen renders from your own ledger (`transactions.yaml`).
+![Portfolio dashboard — by account](docs/screenshot.png)
+
+**By stock, with `--semi`** — weight bars (종목 비중) and the semiconductor look-through panel
+(반도체 집중도) below the holdings table:
+
+![Portfolio dashboard — by stock + semiconductor look-through](docs/screenshot-semi.png)
+
+> Screenshots use the bundled **sample data** (`transactions.example.yaml`), not real holdings.
+> Run it yourself and the same screens render from your own ledger (`transactions.yaml`).
 
 ## Install · Run
 
