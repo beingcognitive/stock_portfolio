@@ -16,6 +16,8 @@ _DIR = os.path.dirname(os.path.abspath(__file__))
 # 개인 원장은 .gitignore 로 저장소에서 제외됩니다.
 LEDGER_PATH = os.path.join(_DIR, "transactions.yaml")
 EXAMPLE_PATH = os.path.join(_DIR, "transactions.example.yaml")
+SEMI_WEIGHTS_PATH = os.path.join(_DIR, "etf_semi_weights.yaml")
+SEMI_WEIGHTS_AUTO_PATH = os.path.join(_DIR, "etf_semi_weights.auto.yaml")
 DB_PATH = os.path.join(_DIR, "history.db")
 
 CURVE_START = _dt.date(2025, 8, 1)  # 최초 매수(2025-08)부터 곡선 시작
@@ -47,6 +49,39 @@ def load_closed() -> list[dict]:
 def load_cash() -> list[dict]:
     """투자 외 예비현금 기록 (회차별). 매입원금/평가금액에는 섞지 않는다."""
     return load_ledger().get("cash", [])
+
+
+def _read_yaml(path: str) -> dict:
+    if not os.path.exists(path):
+        return {}
+    with open(path, "r", encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
+
+
+def load_semi_weights() -> dict:
+    """ETF별 반도체 비중(look-through) 추정치. 둘 다 없으면 빈 dict (섹션 미표시).
+
+    구조: {'as_of': 'YYYY-MM-DD', 'weights': {krx_code: {버킷: %}}}
+    버킷 = 삼성전자 / SK하이닉스 / 한국기타반도체 / 글로벌반도체.
+
+    두 파일을 병합한다:
+      - etf_semi_weights.yaml      : 수동 유지(해외/글로벌 포함, 주석 보존)
+      - etf_semi_weights.auto.yaml : refresh_semi_weights.py 가 쓰는 국내 자동 갱신분
+    같은 krx_code 면 자동(국내 버킷)이 수동을 덮고, 수동의 글로벌반도체 등은 보존된다.
+    as_of 는 자동분(가장 신선한 국내 기준일)을 우선 표시한다.
+    """
+    manual = _read_yaml(SEMI_WEIGHTS_PATH)
+    auto = _read_yaml(SEMI_WEIGHTS_AUTO_PATH)
+    if not manual and not auto:
+        return {}
+    mw, aw = manual.get("weights", {}) or {}, auto.get("weights", {}) or {}
+    merged: dict[str, dict] = {}
+    for code in set(mw) | set(aw):
+        m = dict(mw.get(code, {}))
+        m.update(aw.get(code, {}))  # 자동분(국내 버킷)이 수동을 덮음. 글로벌 등은 m 에 남음.
+        merged[code] = m
+    as_of = auto.get("as_of") or manual.get("as_of") or ""
+    return {"as_of": str(as_of), "weights": merged}
 
 
 def load_account_order() -> list[str]:
@@ -246,6 +281,7 @@ def dataset(prior_prices: dict | None = None, refresh: bool = True) -> dict:
     nlots = [
         {
             "account": l["account"], "name": l["name"], "ticker": l["ticker"],
+            "krx_code": l.get("krx_code"),
             "region": l["region"], "date": str(l["date"]),
             "shares": float(l["shares"]), "price": float(l["price"]),
         }
@@ -254,6 +290,7 @@ def dataset(prior_prices: dict | None = None, refresh: bool = True) -> dict:
     nclosed = [
         {
             "account": c["account"], "name": c["name"], "ticker": c.get("ticker"),
+            "krx_code": c.get("krx_code"),
             "region": c["region"], "sell_date": str(c["sell_date"]),
             "proceeds": float(c["proceeds"]),
             "tranches": [
@@ -276,6 +313,8 @@ def dataset(prior_prices: dict | None = None, refresh: bool = True) -> dict:
         + [c["account"] for c in cash]
     ))
 
+    sw = load_semi_weights()
+
     return {
         "as_of": _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "lots": nlots,
@@ -285,6 +324,8 @@ def dataset(prior_prices: dict | None = None, refresh: bool = True) -> dict:
         "trading_days": days,
         "accounts": accounts,
         "account_order": load_account_order(),
+        "semi_weights": sw.get("weights", {}),
+        "semi_weights_asof": str(sw.get("as_of", "")),
     }
 
 

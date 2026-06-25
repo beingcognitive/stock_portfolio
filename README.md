@@ -47,6 +47,8 @@ cp transactions.example.yaml transactions.yaml
 # → open http://127.0.0.1:8000 in your browser (port clash: app.py --port 8001)
 # Calm mode is the default (no day-over-day numbers). Add --show-daily to see them:
 #   .venv/bin/python app.py --show-daily
+# Opt-in: show the semiconductor look-through panel (needs etf_semi_weights.yaml):
+#   .venv/bin/python app.py --semi
 ```
 
 > On Windows, replace `.venv/bin/` with `.venv\Scripts\` in the commands above.
@@ -96,6 +98,14 @@ On-screen labels are Korean; below, the English term comes first with the Korean
 - **Holdings table** : per ticker — shares / average cost / current (or as-of-date close) price / cost /
   market value / P/L / return %. A **계좌별 / 종목별** (by-account / by-stock) toggle next to the first
   heading switches between one table per account and a single table that merges each ticker across accounts.
+- **Weight bars (종목 비중)** : in the **종목별** (by-stock) view, a horizontal bar chart under the table
+  shows each holding's share of total market value (bar length = % of total, biggest first), with the
+  amount and % on the right and a 국내 / 해외 (domestic / overseas) split in the legend. Colors are
+  categorical — 국내 orange, 해외 teal — kept distinct from the green/red used for P/L.
+- **Semiconductor concentration (반도체 집중도, look-through — opt-in)** : with `--semi`, a toggle on an
+  **분석** (analysis) bar reveals a second card that "sees through" your ETFs to their actual chip exposure
+  — Samsung Electronics (삼성전자), SK hynix (SK하이닉스), other Korean semis, global semis, and the
+  non-semi remainder — each as an amount + % of total. See [Semiconductor look-through](#semiconductor-concentration-look-through---semi).
 - **Realized P/L table** : completed sells/expirations and cumulative realized gain.
 
 **On-screen labels (Korean → English):** 종목 = name · 수량 = shares · 평균단가 = avg cost ·
@@ -134,6 +144,10 @@ On-screen labels are Korean; below, the English term comes first with the Korean
 - **Holdings view toggle (계좌별 / 종목별)** : switch the holdings between per-account tables and one
   by-stock table. In **종목별**, a ticker held in several accounts gets an **N계좌 합산** tag and **expands
   on click** into an indented per-account breakdown.
+- **Semiconductor toggle (반도체 집중도, only with `--semi`)** : a toggle on the **분석** bar (between the
+  by-stock table and the charts) shows/hides the look-through card; the by-stock view then lays the
+  weight-bar card and the semiconductor card **side by side** (stacking on narrow screens). The choice is
+  saved in the browser.
 - **Theme toggle (icon button, top-right header)** : flip light / dark; the choice is saved in the browser.
 
 All computation runs in the browser from a single `/api/data` fetch, so clicks/filters are instant.
@@ -179,6 +193,28 @@ A few per-row fields, in English:
 
 The file's own header comments describe each field (in Korean); the English summary above covers the same ground.
 
+## Semiconductor concentration (look-through, `--semi`)
+
+ETF names hide what you actually own. With `app.py --semi`, the by-stock view adds a **반도체 집중도
+(look-through)** card that multiplies each held ETF's saved semiconductor weights by its live market
+value to estimate your real exposure to Samsung Electronics, SK hynix, other Korean semis, and global
+semis — plus the non-semi remainder (the buckets sum to 100% of market value). It's off by default
+because it's a personalized analysis that depends on an external, hand-maintained weights file.
+
+- **Weights file** : `etf_semi_weights.yaml` (keyed by `krx_code`, with an `as_of` date). Edit it by
+  hand for overseas/mixed ETFs; the card simply doesn't render if the file is missing.
+- **Auto-refresh (domestic)** : `python refresh_semi_weights.py` pulls each held **domestic** ETF's
+  current top-10 constituents from Naver and rewrites the Samsung / SK hynix / other-Korean-semi
+  weights into `etf_semi_weights.auto.yaml` (gitignored). Overseas and mixed ETFs are skipped (their
+  weights aren't published there) and stay under your manual file. `portfolio.py` merges the two — the
+  auto file overrides domestic buckets, the manual file keeps the rest.
+- **Staleness** : the card shows the `as_of` date and warns when it's older than ~45 days. Active ETFs
+  drift, so re-run the refresh (or edit the file) periodically — exact decimals aren't the point, only
+  not misreading the big picture.
+
+> Limitation: the auto-refresh sees only the top 10 holdings, so semis outside an ETF's top 10 can be
+> undercounted in "other Korean semis" (Samsung/SK hynix are always near the top, so those are accurate).
+
 ## Price sources
 
 - Current/past closes: 6-digit numeric KRX codes are looked up via `pykrx` first; alphanumeric codes
@@ -201,8 +237,10 @@ The file's own header comments describe each field (in Korean); the English summ
 | `transactions.yaml` | the trade ledger (what you edit): `lots` + `closed` + `cash` |
 | `prices.py` | price lookup — current price + historical close series (pykrx + yfinance) |
 | `portfolio.py` | holdings, realized-P/L aggregation, daily value curve, the `/api/data` dataset |
-| `app.py` | Flask web server (`/` dashboard, `/api/data`) |
+| `app.py` | Flask web server (`/` dashboard, `/api/data`); flags `--show-daily`, `--semi` |
 | `templates/index.html` | the dashboard (all rendering/recompute happens in the browser) |
+| `etf_semi_weights.yaml` | semiconductor look-through weights per ETF (for `--semi`); manual base, merged with the auto file |
+| `refresh_semi_weights.py` | refreshes domestic ETF semiconductor weights from Naver → `etf_semi_weights.auto.yaml` |
 
 ## Implementation notes (key decisions & assumptions)
 

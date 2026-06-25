@@ -4,6 +4,9 @@ history.db
 자산배치_세금전략.md
 HANDOFF.md
 
+# 자동 생성: 국내 반도체 비중(refresh_semi_weights.py 산출물)
+etf_semi_weights.auto.yaml
+
 # Python
 __pycache__/
 *.py[cod]
