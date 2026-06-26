@@ -106,6 +106,8 @@ On-screen labels are Korean; below, the English term comes first with the Korean
 - **Holdings table** : per ticker — shares / average cost / current (or as-of-date close) price / cost /
   market value / P/L / return %. A **계좌별 / 종목별** (by-account / by-stock) toggle next to the first
   heading switches between one table per account and a single table that merges each ticker across accounts.
+  Click a numeric column header to sort (cost / market value / P/L / return %); the **current-price**
+  header sorts by **today's change %** (전일대비, not the price itself), so the biggest movers float up.
 - **Weight bars (종목 비중)** : in the **종목별** (by-stock) view, a horizontal bar chart under the table
   shows each holding's share of total market value (bar length = % of total, biggest first), with the
   amount and % on the right and a 국내 / 해외 (domestic / overseas) split in the legend. Colors are

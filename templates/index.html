@@ -469,6 +469,21 @@ function priceDayMove(tk, dateStr, heldPrev) {
   return { cls: "", arrow: "", pct: null };
 }
 
+// 정렬용 일일 등락률(전일대비 %). 표시용 priceDayMove 와 달리 보합은 0 으로 반환하고,
+// 직전 거래일 미보유/데이터 없음만 null(정렬 시 맨 아래로). 행에 r.daymove 로 붙인다.
+function dayMovePct(tk, dateStr, heldPrev) {
+  if (heldPrev === false) return null;
+  const prevDay = prevTradingDay(dateStr);
+  if (!prevDay) return null;
+  const cur = priceOn(tk, dateStr), prev = priceOn(tk, prevDay);
+  if (cur == null || prev == null || prev <= 0) return null;
+  return (cur - prev) / prev * 100;
+}
+function annotateDayMove(rows, dateStr, prevHeld) {
+  for (const r of rows) r.daymove = dayMovePct(r.ticker, dateStr, prevHeld.has(r.ticker));
+  return rows;
+}
+
 // 그날 하루의 평가손익 변량: 직전 거래일에도·당일에도 보유한 종목(account|ticker 교집합)만,
 //   '연속 보유 수량 min(전일, 당일)'으로 직전→당일 종가 재평가한다. 당일 매수분(전일 미보유)과
 //   매도분(당일 미보유)을 대칭으로 제외해, 현금흐름이 아닌 순수 가격 변동만 잡는다.
@@ -898,7 +913,12 @@ function setHoldingsSort(key) {
 // 현재 정렬 기준으로 보유 행 정렬(원본 보존). 동률이면 평가금액 내림차순으로 안정화.
 function sortHoldings(rows) {
   const { key, dir } = holdingsSort, s = dir === "asc" ? 1 : -1;
-  return rows.slice().sort((a, b) => (a[key] - b[key]) * s || b.value - a.value);
+  return rows.slice().sort((a, b) => {
+    const av = a[key], bv = b[key];
+    const na = av == null || Number.isNaN(av), nb = bv == null || Number.isNaN(bv);
+    if (na || nb) return na && nb ? b.value - a.value : (na ? 1 : -1);  // 값 없는 행은 방향과 무관하게 아래로
+    return (av - bv) * s || b.value - a.value;
+  });
 }
 
 // 보기 토글(계좌별/종목별) 마크업. 첫 헤더 이름 옆에 인라인으로 넣는다(현재 보기에 on 표시).
@@ -925,13 +945,14 @@ function toggleStock(tk) {
 
 // 보유 종목 표 공용 헤더(선택일에 따라 '현재가'/'그날 종가').
 // 정렬 가능한 숫자 열 헤더. 활성 열엔 방향 화살표(▼ 내림 / ▲ 오름)를 붙인다.
-function sortTh(key, label) {
+function sortTh(key, label, title) {
   const active = holdingsSort.key === key;
   const arrow = active ? (holdingsSort.dir === "asc" ? " ↑" : " ↓") : "";
-  return `<th class="sortable" onclick="setHoldingsSort('${key}')" title="${label} 기준 정렬">${label}<span class="sort-arrow">${arrow}</span></th>`;
+  return `<th class="sortable" onclick="setHoldingsSort('${key}')" title="${title || label + " 기준 정렬"}">${label}<span class="sort-arrow">${arrow}</span></th>`;
 }
 const holdingsThead = () => `<thead><tr>
-  <th class="name">종목</th><th>수량</th><th>평균단가</th><th>${isToday() ? "현재가" : effectiveDate() + " 종가"}</th>
+  <th class="name">종목</th><th>수량</th><th>평균단가</th>
+  ${sortTh("daymove", isToday() ? "현재가" : effectiveDate() + " 종가", "오늘 등락률(전일대비) 기준 정렬")}
   ${sortTh("cost", "매입금액")}${sortTh("value", "평가금액")}${sortTh("pl", "손익")}${sortTh("return_pct", "수익률")}
 </tr></thead>`;
 
@@ -1009,12 +1030,13 @@ function renderHoldingsByAccount(pos, prevPos, d, staleTickers) {
   for (const p of prevPos) (byAccPrev[p.account] ??= []).push(p);
   let html = "", first = true;
   for (const acc of ACC_ORDER.filter(a => byAcc[a])) {
+    const prevRows = byAccPrev[acc] ?? [];
+    const prevHeld = new Set(prevRows.map(r => r.ticker));
+    annotateDayMove(byAcc[acc], d, prevHeld);   // 현재가 헤더 정렬용 일일 등락률
     const rows = sortHoldings(byAcc[acc]);
     const aVal = rows.reduce((s, r) => s + r.value, 0), aCost = rows.reduce((s, r) => s + r.cost, 0);
     const aPl = aVal - aCost, aRet = aCost ? aPl / aCost * 100 : 0;
-    const prevRows = byAccPrev[acc] ?? [];
     const dc = dayChange(prevRows, rows, d);
-    const prevHeld = new Set(prevRows.map(r => r.ticker));
     html += `<h2>${acc}${first ? " " + holdingsToggleHTML() : ""}<span class="acc-meta">${won(aVal)} · <span class="${cls(aPl)}">${pct(aRet)}</span></span></h2>`;
     first = false;
     html += `<table>${holdingsThead()}<tbody>`;
@@ -1145,14 +1167,16 @@ function renderHoldingsByStock(pos, prevPos, d, staleTickers) {
     b.shares += p.shares; b.cost += p.cost; b.value += p.value;
     b.accounts.add(p.account); b.parts.push(p);
   }
-  const rows = sortHoldings(Object.values(agg).map(r => ({ ...r,
+  const prevHeld = new Set(prevPos.map(r => r.ticker));
+  const mapped = Object.values(agg).map(r => ({ ...r,
     avg_price: r.shares ? r.cost / r.shares : 0, price: r.shares ? r.value / r.shares : 0,
     pl: r.value - r.cost, return_pct: r.cost ? (r.value - r.cost) / r.cost * 100 : 0,
-  })));
+  }));
+  annotateDayMove(mapped, d, prevHeld);          // 현재가 헤더 정렬용 일일 등락률
+  const rows = sortHoldings(mapped);
   const tVal = rows.reduce((s, r) => s + r.value, 0), tCost = rows.reduce((s, r) => s + r.cost, 0);
   const tPl = tVal - tCost, tRet = tCost ? tPl / tCost * 100 : 0;
   const dc = dayChange(prevPos, pos, d);
-  const prevHeld = new Set(prevPos.map(r => r.ticker));
   let html = `<h2>전체 종목 ${holdingsToggleHTML()}<span class="acc-meta">${won(tVal)} · <span class="${cls(tPl)}">${pct(tRet)}</span></span></h2>`;
   html += `<table>${holdingsThead()}<tbody>`;
   for (const r of rows) {
