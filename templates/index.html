@@ -162,12 +162,16 @@
   .asof-bar b { font-size: 15px; }
   /* 보유 종목 보기 토글(계좌별/종목별): 첫 계좌 헤더의 이름 바로 옆에 인라인으로 둔다. */
   .holdings-toggle { align-self: center; }
-  .seg { display: inline-flex; background: var(--panel); border: 1px solid var(--line);
-    border-radius: 999px; overflow: hidden; }
-  .seg-btn { border: none; border-radius: 0; background: none; color: var(--muted);
-    padding: 4px 12px; font-size: 12px; cursor: pointer; transition: background .12s, color .12s; }
-  .seg-btn:hover:not(.on) { border: none; color: var(--txt); }
-  .seg-btn.on { background: var(--accent-bg); color: var(--accent); }
+  .seg { display: inline-flex; background: var(--panel); border-radius: 999px; }
+  .seg-btn { border: 1px solid var(--line); background: none; color: var(--muted);
+    padding: 4px 12px; font-size: 12px; cursor: pointer; transition: background .12s, color .12s, border-color .12s; }
+  .seg-btn:first-child { border-radius: 999px 0 0 999px; }
+  .seg-btn:last-child  { border-radius: 0 999px 999px 0; }
+  .seg-btn:only-child  { border-radius: 999px; }
+  .seg-btn + .seg-btn  { margin-left: -1px; }   /* 분할선 한 줄로 겹치기 */
+  .seg-btn:hover:not(.on) { color: var(--txt); }
+  /* 선택: 그 절반(또는 전체)이 악센트 테두리의 알약이 되게 (계좌 pill 과 동일 언어). z-index 로 테두리를 위로 */
+  .seg-btn.on { background: var(--accent-bg); color: var(--accent); border-color: var(--accent); position: relative; z-index: 1; }
   /* 종목별 보기에서 여러 계좌에 걸친 행임을 알리는 태그 */
   .tag.merged { border-color: var(--accent); color: var(--accent); }
   /* 여러 계좌 합산 행: 클릭하면 계좌별 내역 펼침(셰브론으로 상태 표시). */
