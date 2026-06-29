@@ -1077,8 +1077,19 @@ function weightBarsHTML(rows, tVal) {
 
 // 섹터 집중도(look-through): 저장된 ETF별 섹터 비중을 실시간 평가금액에 곱해 환산한다.
 // semi(반도체)·defense(방산·조선) 등 여러 섹터가 같은 엔진/그리드를 공유한다.
-function sectorConcentration(rows, weightsKey, bucketKeys) {
-  const W = DATA[weightsKey] || {};
+// 선택일에 맞는 비중 스냅샷 선택: 선택일 이하 가장 가까운 것, 그보다 과거면 가장 오래된 것.
+// 히스토리 없으면 최신(폴백). → 과거 날짜 look-through 도 그 시점에 가까운 구성으로 계산된다.
+function pickWeights(history, latest, latestAsof, dateStr) {
+  if (history && history.length) {
+    let chosen = history[0];                       // 가장 오래된 스냅샷 (선택일이 더 과거면 이걸 사용)
+    for (const s of history) { if (s.date <= dateStr) chosen = s; else break; }
+    return { weights: chosen.weights || {}, asof: chosen.date };
+  }
+  return { weights: latest || {}, asof: latestAsof || "" };
+}
+
+function sectorConcentration(rows, weights, bucketKeys) {
+  const W = weights || {};
   const code = {};   // ticker -> krx_code
   for (const l of DATA.lots) if (l.krx_code) code[l.ticker] = l.krx_code;
   for (const c of DATA.closed) if (c && c.krx_code) code[c.ticker] = c.krx_code;
@@ -1096,7 +1107,7 @@ function sectorConcentration(rows, weightsKey, bucketKeys) {
 // 활성화(--플래그)된 섹터 패널 설정. 종목 비중과 동일한 .wbar-row 그리드를 공유.
 const SECTOR_PANELS = [
   {
-    key: "semi", show: () => SHOW_SEMI, weightsKey: "semi_weights", asofKey: "semi_weights_asof",
+    key: "semi", show: () => SHOW_SEMI, weightsKey: "semi_weights", asofKey: "semi_weights_asof", historyKey: "semi_weights_history",
     toggleLabel: "🔬 반도체 집중도", title: "🔬 반도체 집중도 (look-through)", asofTail: "국내 자동·해외 수동",
     totalLabel: "전체 반도체 노출", remainderLabel: "비반도체", refreshHint: "반도체 국내 비중",
     buckets: [
@@ -1110,7 +1121,7 @@ const SECTOR_PANELS = [
     note: `막대·%는 모두 <b>전체 평가금액 대비</b>입니다 — 반도체 4개 + 비반도체 = 100%. '삼성+하이닉스 합'은 위 두 종목의 소계(중복)라 합산에서 제외. 'RISE 삼성전자SK하이닉스'(주식50/채권50)는 주식분만 두 종목으로 반영. 비중 추정치는 <code>etf_semi_weights.yaml</code>에서 갱신.`,
   },
   {
-    key: "defense", show: () => SHOW_DEFENSE, weightsKey: "defense_weights", asofKey: "defense_weights_asof",
+    key: "defense", show: () => SHOW_DEFENSE, weightsKey: "defense_weights", asofKey: "defense_weights_asof", historyKey: "defense_weights_history",
     toggleLabel: "🛡 방산·조선", title: "🛡 방산·조선 집중도 (look-through)", asofTail: "국내 자동",
     totalLabel: "전체 방산·조선 노출", remainderLabel: "기타", refreshHint: "방산·조선 국내 비중",
     buckets: [
@@ -1125,10 +1136,11 @@ const SECTOR_PANELS = [
 // 섹터 집중도 박스. 종목 비중과 동일한 .wbar-row 그리드(라벨 | 막대 | 값)를 공유해 칼정렬.
 // 각 행 값 컬럼은 금액(굵게)+% 2단. 막대·%는 모두 전체 평가금액 대비 절대 스케일.
 function sectorBoxHTML(rows, cfg) {
-  const W = DATA[cfg.weightsKey] || {};
-  if (!W || !Object.keys(W).length) return "";   // 비중 데이터 없으면 패널 생략
+  const d = effectiveDate();
+  const { weights, asof } = pickWeights(DATA[cfg.historyKey], DATA[cfg.weightsKey], DATA[cfg.asofKey], d);
+  if (!weights || !Object.keys(weights).length) return "";   // 비중 데이터 없으면 패널 생략
   const bucketKeys = cfg.buckets.map(b => b.k);
-  const { B, inSector, total } = sectorConcentration(rows, cfg.weightsKey, bucketKeys);
+  const { B, inSector, total } = sectorConcentration(rows, weights, bucketKeys);
   if (!total) return "";
   const p = v => total ? v / total * 100 : 0;
   const bar = (label, val, cl) => `<div class="wbar-row">
@@ -1139,11 +1151,14 @@ function sectorBoxHTML(rows, cfg) {
   const sub = st.ks.reduce((s, k) => s + (B[k] || 0), 0);
   const subRow = `<div class="semi-sub"><span class="cap">${st.label}</span><span class="val"><b>${won(sub)}</b> · ${p(sub).toFixed(1)}%</span></div>`;
   const warn = (st.warnAt != null && p(sub) >= st.warnAt) ? `<div class="semi-warn">${st.warn(p(sub).toFixed(1))}</div>` : "";
-  const asof = DATA[cfg.asofKey] || "";
+  // 신선도 경고는 '현재' 볼 때만 + 최신 데이터 기준. (과거 날짜를 볼 땐 오래된 스냅샷이 정상이라 경고 X)
   let stale = "";
-  if (asof) {
-    const age = Math.floor((Date.now() - new Date(asof + "T00:00:00")) / 86400000);
-    if (age > 45) stale = `<div class="semi-warn">🕐 비중 데이터가 <b>${age}일</b> 경과(${asof} 기준). <code>python refresh_sector_weights.py</code> 로 ${cfg.refreshHint}를 갱신하세요.</div>`;
+  if (isToday()) {
+    const latestAsof = DATA[cfg.asofKey] || "";
+    if (latestAsof) {
+      const age = Math.floor((Date.now() - new Date(latestAsof + "T00:00:00")) / 86400000);
+      if (age > 45) stale = `<div class="semi-warn">🕐 비중 데이터가 <b>${age}일</b> 경과(${latestAsof} 기준). <code>python refresh_sector_weights.py</code> 로 ${cfg.refreshHint}를 갱신하세요.</div>`;
+    }
   }
   // 막대 행: 버킷들 + 소계 캡션(소계 마지막 종목 아래) + 잔여(기타) 막대 → 전체 100%.
   let bars = "";

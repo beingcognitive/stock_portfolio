@@ -127,7 +127,21 @@ def main() -> None:
             f.write(f"# 섹터 '{sector}' 국내 ETF 비중(네이버 구성종목 TOP10). 해외/혼합은 수동 파일에서 관리.\n")
             yaml.safe_dump({"as_of": today, "_generated_by": "refresh_sector_weights.py",
                             "weights": weights}, f, allow_unicode=True, sort_keys=False)
-        print(f"\n[{sector}] → etf_{sector}_weights.auto.yaml (as_of {today}) · 갱신 {len(updated)}건")
+        # --- 날짜별 스냅샷 히스토리 append (전체 병합 비중 = 수동 ⊕ 방금 쓴 자동) ---
+        merged = pf.load_sector_weights(sector).get("weights", {})
+        hpath = os.path.join(_DIR, f"etf_{sector}_weights.history.yaml")
+        hist = {}
+        if os.path.exists(hpath):
+            with open(hpath, "r", encoding="utf-8") as f:
+                hist = yaml.safe_load(f) or {}
+        snaps = hist.get("snapshots", {}) or {}
+        snaps[today] = merged   # 같은 날 재실행 시 덮어씀
+        with open(hpath, "w", encoding="utf-8") as f:
+            f.write("# 날짜별 섹터 비중 스냅샷 (refresh_sector_weights.py 가 실행일마다 append).\n")
+            f.write("# 과거 날짜 look-through = 선택일 이하 가장 가까운 스냅샷(없으면 가장 오래된 것).\n")
+            yaml.safe_dump({"snapshots": snaps}, f, allow_unicode=True, sort_keys=True)
+
+        print(f"\n[{sector}] → etf_{sector}_weights.auto.yaml + history[{today}] · 갱신 {len(updated)}건")
         for u in updated:
             print("   -", u)
         if skipped:

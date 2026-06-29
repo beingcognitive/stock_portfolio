@@ -80,6 +80,19 @@ def load_sector_weights(sector: str) -> dict:
     return {"as_of": str(as_of), "weights": merged}
 
 
+def load_sector_history(sector: str) -> list[dict]:
+    """날짜별 섹터 비중 스냅샷 (과거 날짜 look-through 용). 오래된→최신 정렬.
+
+    etf_<sector>_weights.history.yaml 의 {snapshots: {YYYY-MM-DD: {code: {버킷:%}}}}.
+    각 스냅샷은 그날 기준의 '전체 병합 비중'(국내 자동 + 해외 수동)을 통째로 보관한다.
+    refresh_sector_weights.py 가 실행일마다 append 하며, 프런트는 선택일 이하 가장 가까운
+    스냅샷(없으면 가장 오래된 것)을 쓴다. 파일 없으면 빈 리스트(프런트는 최신 비중으로 폴백).
+    """
+    h = _read_yaml(os.path.join(_DIR, f"etf_{sector}_weights.history.yaml"))
+    snaps = h.get("snapshots", {}) or {}
+    return [{"date": str(d), "weights": w} for d, w in sorted(snaps.items())]
+
+
 def load_semi_weights() -> dict:
     """반도체 섹터 비중 (load_sector_weights('semi') 별칭, 하위호환)."""
     return load_sector_weights("semi")
@@ -328,8 +341,10 @@ def dataset(prior_prices: dict | None = None, refresh: bool = True) -> dict:
         "account_order": load_account_order(),
         "semi_weights": semi.get("weights", {}),
         "semi_weights_asof": str(semi.get("as_of", "")),
+        "semi_weights_history": load_sector_history("semi"),
         "defense_weights": defense.get("weights", {}),
         "defense_weights_asof": str(defense.get("as_of", "")),
+        "defense_weights_history": load_sector_history("defense"),
     }
 
 
