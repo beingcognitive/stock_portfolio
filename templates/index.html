@@ -237,17 +237,18 @@
   .wbar-fill.na { background: var(--muted); opacity: .55; }
   /* 값 컬럼: 금액(굵게) 위, % 아래. 우측 정렬 + tabular-nums 로 자리수 정렬. */
   .wbar-val { text-align: right; line-height: 1.25; font-variant-numeric: tabular-nums; }
-  .wbar-val .amt { display: block; font-size: 12px; font-weight: 600; color: var(--txt); white-space: nowrap; }
-  .wbar-val .pct { display: block; font-size: 11px; color: var(--muted); white-space: nowrap; }
-  .wbar-row.is-strong .wbar-name, .wbar-row.is-strong .wbar-val .amt { font-weight: 700; color: var(--txt); }
+  /* 이 섹션의 목적은 '비중' 측정 → 비중(%)을 강조, 금액은 보조 */
+  .wbar-val .pct { display: block; font-size: 13px; font-weight: 700; color: var(--txt); white-space: nowrap; }
+  .wbar-val .amt { display: block; font-size: 11px; font-weight: 400; color: var(--muted); white-space: nowrap; }
+  .wbar-row.is-strong .wbar-name, .wbar-row.is-strong .wbar-val .pct { color: var(--accent); }
   /* 반도체 집중도(look-through) 섹션. 저장된 ETF 반도체 비중 × 실시간 평가금액. */
   /* 전체 반도체 노출 합계줄: 그리드 값 축과 시각적으로 맞도록 라벨/값 양끝 배치 + 위아래 구분선. */
   .semi-total { display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
     font-size: 13px; color: var(--muted); margin: 2px 0 12px; padding-bottom: 11px; border-bottom: 1px solid var(--line); }
   .semi-total .lbl { color: var(--txt); }
   .semi-total .val { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .semi-total .val b { font-size: 18px; color: var(--accent); font-weight: 700; }
-  .semi-total .val .pctbig { color: var(--accent); font-weight: 700; margin-left: 6px; }
+  .semi-total .val .amt2 { font-size: 13px; color: var(--muted); font-weight: 600; margin-right: 8px; }
+  .semi-total .val .pctbig { font-size: 18px; color: var(--accent); font-weight: 700; }
   .semi-warn { margin-top: 11px; font-size: 12px; line-height: 1.5; background: rgba(217,164,65,.10);
     border: 1px solid rgba(217,164,65,.35); color: var(--warn,#d9a441); padding: 8px 11px; border-radius: 8px; }
   .semi-note { color: var(--muted); font-size: 11px; margin-top: 12px; padding-top: 11px; border-top: 1px solid var(--line); line-height: 1.5; }
@@ -264,7 +265,7 @@
   .charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; align-items: start; margin: 0 0 18px; }
   .charts-grid > .wbars, .charts-grid > .semi-box { margin: 0; }
   /* 분석 바: 표와 카드 사이. 토글을 카드 바로 위에 둬 컨트롤↔대상을 붙인다(여러 섹터면 우측에 나열). */
-  .analysis-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 18px 0 10px; }
+  .analysis-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 2px 0 10px; }
   .analysis-label { font-size: 13px; font-weight: 700; color: var(--txt); }
   .analysis-bar .semi-toggle:first-of-type { margin-left: auto; }
   @media (max-width: 560px) { :root { --wb-name: 104px; --wb-val: 100px; } .wbar-row, .semi-sub { column-gap: 9px; } .wbar-name { font-size: 11px; } }
@@ -1062,7 +1063,7 @@ function weightBarsHTML(rows, tVal) {
     return `<div class="wbar-row">
       <div class="wbar-name" title="${r.name}">${r.name}</div>
       <div class="wbar-track"><div class="wbar-fill ${cl}" style="width:${w.toFixed(2)}%"></div></div>
-      <div class="wbar-val"><span class="amt">${won(r.value)}</span><span class="pct">${w.toFixed(1)}%</span></div>
+      <div class="wbar-val"><span class="pct">${w.toFixed(1)}%</span><span class="amt">${won(r.value)}</span></div>
     </div>`;
   }).join("");
   // 범례에 국내/해외 합계 비중 표시.
@@ -1146,10 +1147,10 @@ function sectorBoxHTML(rows, cfg) {
   const bar = (label, val, cl) => `<div class="wbar-row">
       <div class="wbar-name" title="${label}">${label}</div>
       <div class="wbar-track"><div class="wbar-fill ${cl}" style="width:${p(val).toFixed(2)}%"></div></div>
-      <div class="wbar-val"><span class="amt">${won(val)}</span><span class="pct">${p(val).toFixed(1)}%</span></div></div>`;
+      <div class="wbar-val"><span class="pct">${p(val).toFixed(1)}%</span><span class="amt">${won(val)}</span></div></div>`;
   const st = cfg.subtotal;
   const sub = st.ks.reduce((s, k) => s + (B[k] || 0), 0);
-  const subRow = `<div class="semi-sub"><span class="cap">${st.label}</span><span class="val"><b>${won(sub)}</b> · ${p(sub).toFixed(1)}%</span></div>`;
+  const subRow = `<div class="semi-sub"><span class="cap">${st.label}</span><span class="val">${won(sub)} · <b>${p(sub).toFixed(1)}%</b></span></div>`;
   const warn = (st.warnAt != null && p(sub) >= st.warnAt) ? `<div class="semi-warn">${st.warn(p(sub).toFixed(1))}</div>` : "";
   // 신선도 경고는 '현재' 볼 때만 + 최신 데이터 기준. (과거 날짜를 볼 땐 오래된 스냅샷이 정상이라 경고 X)
   let stale = "";
@@ -1170,7 +1171,7 @@ function sectorBoxHTML(rows, cfg) {
   return `<div class="semi-box">
     <div class="semi-head">${cfg.title}<span class="semi-asof">· ETF 구성 추정 기준 ${asof || "-"} · ${cfg.asofTail}</span></div>
     ${stale}
-    <div class="semi-total"><span class="lbl">${cfg.totalLabel}</span><span class="val"><b>${won(inSector)}</b><span class="pctbig">${p(inSector).toFixed(1)}%</span></span></div>
+    <div class="semi-total"><span class="lbl">${cfg.totalLabel}</span><span class="val"><span class="amt2">${won(inSector)}</span><span class="pctbig">${p(inSector).toFixed(1)}%</span></span></div>
     ${bars}
     ${warn}
     <div class="semi-note">${cfg.note}</div>
@@ -1197,6 +1198,16 @@ function renderHoldingsByStock(pos, prevPos, d, staleTickers) {
   const tPl = tVal - tCost, tRet = tCost ? tPl / tCost * 100 : 0;
   const dc = dayChange(prevPos, pos, d);
   let html = `<h2>전체 종목 ${holdingsToggleHTML()}<span class="acc-meta">${won(tVal)} · <span class="${cls(tPl)}">${pct(tRet)}</span></span></h2>`;
+  // 분석 영역(비중·집중도 카드)을 표 위로 — '행 집착'보다 '비중'을 먼저 보게.
+  const active = SECTOR_PANELS.filter(p => p.show());
+  if (active.length) {
+    html += `<div class="analysis-bar"><span class="analysis-label">분석</span>${active.map(sectorToggleHTML).join("")}</div>`;
+    const cards = [weightBarsHTML(rows, tVal)];
+    for (const p of active) if (sectorShow(p.key)) { const box = sectorBoxHTML(rows, p); if (box) cards.push(box); }
+    html += `<div class="charts-grid">${cards.join("")}</div>`;
+  } else {
+    html += weightBarsHTML(rows, tVal);
+  }
   html += `<table>${holdingsThead()}<tbody>`;
   for (const r of rows) {
     if (r.accounts.size > 1) {
@@ -1211,17 +1222,6 @@ function renderHoldingsByStock(pos, prevPos, d, staleTickers) {
     }
   }
   html += holdingsTotalRow(tCost, tVal, dc) + `</tbody></table>`;
-  // 표 다음 = 분석 영역. 활성(--플래그)된 섹터마다 토글을 카드 바로 위 '분석 바'에 둔다
-  // (컨트롤↔대상 인접). 종목 비중 + 켜진 섹터 카드들이 반응형 그리드로 흐른다.
-  const active = SECTOR_PANELS.filter(p => p.show());
-  if (active.length) {
-    html += `<div class="analysis-bar"><span class="analysis-label">분석</span>${active.map(sectorToggleHTML).join("")}</div>`;
-    const cards = [weightBarsHTML(rows, tVal)];
-    for (const p of active) if (sectorShow(p.key)) { const box = sectorBoxHTML(rows, p); if (box) cards.push(box); }
-    html += `<div class="charts-grid">${cards.join("")}</div>`;
-  } else {
-    html += weightBarsHTML(rows, tVal);
-  }
   return html;
 }
 
