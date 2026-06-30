@@ -259,15 +259,10 @@
   .semi-sub .cap { grid-column: 1 / 3; }
   .semi-sub .val { grid-column: 3; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .semi-sub .val b { color: var(--txt); font-weight: 700; }
-  .semi-toggle { flex: 0 0 auto; margin-left: 12px; }
   /* 섹터 집중도 분석 영역: 종목 비중 + 활성 섹터 카드를 반응형 그리드로(밀도↑, ETF→투과 대비).
      auto-fit 이라 화면 폭에 따라 1~3열로 자동 흐름. 카드 자체 마진은 그리드 gap 으로 대체. */
-  .charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; align-items: start; margin: 0 0 18px; }
+  .charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; align-items: start; margin: 4px 0 18px; }
   .charts-grid > .wbars, .charts-grid > .semi-box { margin: 0; }
-  /* 분석 바: 표와 카드 사이. 토글을 카드 바로 위에 둬 컨트롤↔대상을 붙인다(여러 섹터면 우측에 나열). */
-  .analysis-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 2px 0 10px; }
-  .analysis-label { font-size: 13px; font-weight: 700; color: var(--txt); }
-  .analysis-bar .semi-toggle:first-of-type { margin-left: auto; }
   @media (max-width: 560px) { :root { --wb-name: 104px; --wb-val: 100px; } .wbar-row, .semi-sub { column-gap: 9px; } .wbar-name { font-size: 11px; } }
 </style>
 </head>
@@ -386,8 +381,6 @@ let showCash = true;                // 차트에 현금(예비) 띠 + 총자산 
 let holdingsView = "account";       // 보유 종목 보기: 'account'(계좌별) | 'stock'(종목별 합산)
 let holdingsSort = { key: "value", dir: "desc" };  // 보유 표 정렬: key ∈ cost|value|pl|return_pct, dir ∈ asc|desc
 let expandedStocks = new Set();     // 종목별 보기에서 계좌 내역을 펼친 티커들
-// 섹터 집중도 패널 표시 여부(해당 --플래그 모드에서만 토글 노출). 선택은 localStorage 기억.
-const sectorShow = (k) => { try { return localStorage.getItem(k + "Box") !== "off"; } catch (e) { return true; } };
 let chart;
 
 // ---- 데이터 적재 + 전처리 ----
@@ -932,16 +925,6 @@ const holdingsToggleHTML = () => `<span class="seg holdings-toggle" role="group"
   <button class="seg-btn${holdingsView === "stock" ? " on" : ""}" onclick="setHoldingsView('stock')">종목별</button>
 </span>`;
 
-// 섹터 집중도 패널 표시 토글(분석 바). 활성화된(--플래그) 섹터마다 하나씩.
-const sectorToggleHTML = (p) =>
-  `<span class="seg semi-toggle"><button class="seg-btn${sectorShow(p.key) ? " on" : ""}"
-     onclick="toggleSector('${p.key}')" title="${p.toggleLabel} 표시/숨김">${p.toggleLabel}</button></span>`;
-function toggleSector(key) {
-  const cur = sectorShow(key);
-  try { localStorage.setItem(key + "Box", cur ? "off" : "on"); } catch (e) {}
-  renderHoldings();
-}
-
 // 종목별 보기에서 '계좌 합산' 행을 펼치거나 접는다(계좌별 내역 하위 행).
 function toggleStock(tk) {
   if (expandedStocks.has(tk)) expandedStocks.delete(tk); else expandedStocks.add(tk);
@@ -1197,13 +1180,12 @@ function renderHoldingsByStock(pos, prevPos, d, staleTickers) {
   const tVal = rows.reduce((s, r) => s + r.value, 0), tCost = rows.reduce((s, r) => s + r.cost, 0);
   const tPl = tVal - tCost, tRet = tCost ? tPl / tCost * 100 : 0;
   const dc = dayChange(prevPos, pos, d);
-  let html = `<h2>전체 종목 ${holdingsToggleHTML()}<span class="acc-meta">${won(tVal)} · <span class="${cls(tPl)}">${pct(tRet)}</span></span></h2>`;
-  // 분석 영역(비중·집중도 카드)을 표 위로 — '행 집착'보다 '비중'을 먼저 보게.
   const active = SECTOR_PANELS.filter(p => p.show());
+  let html = `<h2>전체 종목 ${holdingsToggleHTML()}<span class="acc-meta">${won(tVal)} · <span class="${cls(tPl)}">${pct(tRet)}</span></span></h2>`;
+  // --semi/--defense 로 켠 섹터 카드는 토글 없이 항상 표시(플래그 자체가 표시 의사). 비중을 표 위에 먼저.
   if (active.length) {
-    html += `<div class="analysis-bar"><span class="analysis-label">분석</span>${active.map(sectorToggleHTML).join("")}</div>`;
     const cards = [weightBarsHTML(rows, tVal)];
-    for (const p of active) if (sectorShow(p.key)) { const box = sectorBoxHTML(rows, p); if (box) cards.push(box); }
+    for (const p of active) { const box = sectorBoxHTML(rows, p); if (box) cards.push(box); }
     html += `<div class="charts-grid">${cards.join("")}</div>`;
   } else {
     html += weightBarsHTML(rows, tVal);
