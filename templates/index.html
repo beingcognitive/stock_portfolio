@@ -1122,7 +1122,7 @@ const SECTOR_PANELS = [
     ],
     subtotal: { label: "└ 삼성+하이닉스 합 (위 두 종목 소계)", ks: ["삼성전자", "SK하이닉스"], warnAt: 35,
       warn: (pct) => `⚠ 삼성전자+SK하이닉스가 평가금액의 <b>${pct}%</b> — 단 2개 종목에 대한 집중이 큽니다. 한 종목을 직접 더 사기 전에 이 수치부터 보세요.` },
-    note: `막대·%는 모두 <b>전체 평가금액 대비</b>입니다 — 반도체 4개 + 비반도체 = 100%. '삼성+하이닉스 합'은 위 두 종목의 소계(중복)라 합산에서 제외. 'RISE 삼성전자SK하이닉스'(주식50/채권50)는 주식분만 두 종목으로 반영. 비중 추정치는 <code>etf_semi_weights.yaml</code>에서 갱신.`,
+    note: `%·금액은 모두 <b>전체 평가금액 대비</b>입니다 — 반도체 4개 + 비반도체 = 100%. '삼성+하이닉스 합'은 위 두 종목의 소계(중복)라 합산에서 제외. 'RISE 삼성전자SK하이닉스'(주식50/채권50)는 주식분만 두 종목으로 반영. 비중 추정치는 <code>etf_semi_weights.yaml</code>에서 갱신.`,
   },
   {
     key: "defense", show: () => SHOW_DEFENSE, weightsKey: "defense_weights", asofKey: "defense_weights_asof", historyKey: "defense_weights_history",
@@ -1133,12 +1133,12 @@ const SECTOR_PANELS = [
       { label: "조선", k: "조선", cls: "def2", color: "var(--def2)" },
     ],
     subtotal: { label: "└ 방산+조선 합 (소계)", ks: ["방산", "조선"], warnAt: null },
-    note: `막대·%는 모두 <b>전체 평가금액 대비</b>입니다 — 방산·조선 + 기타 = 100%. 방산·조선이 없는 ETF는 0. 비중 추정치는 <code>etf_defense_weights.yaml</code>에서 갱신(국내는 <code>refresh_sector_weights.py</code> 자동). TOP10 기준이라 11위 밖은 누락될 수 있음.`,
+    note: `%·금액은 모두 <b>전체 평가금액 대비</b>입니다 — 방산·조선 + 기타 = 100%. 방산·조선이 없는 ETF는 0. 비중 추정치는 <code>etf_defense_weights.yaml</code>에서 갱신(국내는 <code>refresh_sector_weights.py</code> 자동). TOP10 기준이라 11위 밖은 누락될 수 있음.`,
   },
 ];
 
 // 섹터 집중도 박스. 종목 비중과 동일한 .wbar-row 그리드(라벨 | 막대 | 값)를 공유해 칼정렬.
-// 각 행 값 컬럼은 금액(굵게)+% 2단. 막대·%는 모두 전체 평가금액 대비 절대 스케일.
+// 도넛(파이)+범례. 범례 각 행은 금액(굵게)+% 2단. %·금액은 모두 전체 평가금액 대비 절대 스케일.
 function sectorBoxHTML(rows, cfg) {
   const d = effectiveDate();
   const { weights, asof } = pickWeights(DATA[cfg.historyKey], DATA[cfg.weightsKey], DATA[cfg.asofKey], d);
