@@ -10,7 +10,7 @@ valuation, realized P/L, and a daily market-value curve from your first purchase
 
 ## Preview
 
-**By account (default)** — asset-flow summary, value curve, per-account holdings, realized P/L:
+**By account (계좌별)** — asset-flow summary, value curve, per-account holdings, realized P/L:
 
 ![Portfolio dashboard — by account](docs/screenshot.png)
 
@@ -287,7 +287,7 @@ simply doesn't render if its file is missing.
   balance (net worth) — apart, so the same number never shows twice.
 - **By-stock view (종목별)** : aggregates each ticker across all accounts (summed shares / cost / value,
   with average price and return recomputed); a ticker spanning multiple accounts carries an **N계좌 합산**
-  tag and expands to its per-account rows. The per-account view (**계좌별**) is the default. Both honor the
+  tag and expands to its per-account rows. The by-stock view (**종목별**) is the default. Both honor the
   account filter and the selected date.
 - **Day-over-day (daily change) definition** : the "전일대비" line under the unrealized-P/L node and each
   account total is the **pure price move of positions held on *both* yesterday and today**, valued at the

@@ -394,7 +394,7 @@ let selectedDate = null;            // null = 마지막 거래일(현재)
 let selectedYear = null;            // null = 전체 기간
 let VIS = [];                       // 현재 차트에 보이는 거래일(연도 필터+트림). 스테퍼 이동 범위.
 let showCash = true;                // 차트에 현금(예비) 띠 + 총자산 선 표시 여부 (기본 켜짐: 첫 로드 = 전체 포트폴리오)
-let holdingsView = "account";       // 보유 종목 보기: 'account'(계좌별) | 'stock'(종목별 합산)
+let holdingsView = "stock";         // 보유 종목 보기 기본값: 'stock'(종목별 합산) | 'account'(계좌별)
 let holdingsSort = { key: "value", dir: "desc" };  // 보유 표 정렬: key ∈ cost|value|pl|return_pct, dir ∈ asc|desc
 let expandedStocks = new Set();     // 종목별 보기에서 계좌 내역을 펼친 티커들
 let chart;
