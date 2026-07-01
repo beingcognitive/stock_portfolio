@@ -263,6 +263,22 @@
      auto-fit 이라 화면 폭에 따라 1~3열로 자동 흐름. 카드 자체 마진은 그리드 gap 으로 대체. */
   .charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; align-items: start; margin: 4px 0 18px; }
   .charts-grid > .wbars, .charts-grid > .semi-box { margin: 0; }
+  /* 반도체 집중도 도넛(파이) + 범례. conic-gradient 라 캔버스 없이 리렌더 안전. */
+  .semi-chart { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; margin: 8px 0 4px; }
+  .semi-pie { position: relative; width: 128px; height: 128px; border-radius: 50%; flex: 0 0 auto; }
+  .semi-pie-hole { position: absolute; inset: 25px; background: var(--panel); border-radius: 50%;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .semi-pie-hole b { font-size: 19px; font-weight: 700; color: var(--accent); line-height: 1; }
+  .semi-pie-hole span { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .semi-legend { flex: 1 1 220px; min-width: 200px; }
+  .semi-legend .lg { display: grid; grid-template-columns: 12px 1fr auto; align-items: center; gap: 8px; padding: 3px 0; font-size: 12px; }
+  .semi-legend .lg i { width: 11px; height: 11px; border-radius: 3px; }
+  .semi-legend .lg .nm { color: var(--txt); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .semi-legend .lg .vv { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .semi-legend .lg .vv b { color: var(--txt); font-weight: 700; }
+  .semi-legend .lg .vv .am { color: var(--muted); font-size: 11px; margin-left: 6px; }
+  .semi-legend .lg.sub { margin-top: 3px; padding-top: 5px; border-top: 1px dashed var(--line); }
+  .semi-legend .lg.sub .nm { padding-left: 19px; font-size: 11px; color: var(--muted); }
   @media (max-width: 560px) { :root { --wb-name: 104px; --wb-val: 100px; } .wbar-row, .semi-sub { column-gap: 9px; } .wbar-name { font-size: 11px; } }
 </style>
 </head>
@@ -1093,12 +1109,12 @@ const SECTOR_PANELS = [
   {
     key: "semi", show: () => SHOW_SEMI, weightsKey: "semi_weights", asofKey: "semi_weights_asof", historyKey: "semi_weights_history",
     toggleLabel: "🔬 반도체 집중도", title: "🔬 반도체 집중도 (look-through)", asofTail: "국내 자동·해외 수동",
-    totalLabel: "전체 반도체 노출", remainderLabel: "비반도체", refreshHint: "반도체 국내 비중",
+    totalLabel: "전체 반도체 노출", remainderLabel: "비반도체", refreshHint: "반도체 국내 비중", centerLabel: "반도체",
     buckets: [
-      { label: "삼성전자", k: "삼성전자", cls: "kr" },
-      { label: "SK하이닉스", k: "SK하이닉스", cls: "kr" },
-      { label: "한국 기타 반도체", k: "한국기타반도체", cls: "kr" },
-      { label: "글로벌 반도체", k: "글로벌반도체", cls: "ov" },
+      { label: "삼성전자", k: "삼성전자", cls: "kr", color: "#f97316" },
+      { label: "SK하이닉스", k: "SK하이닉스", cls: "kr", color: "#fbbf24" },
+      { label: "한국 기타 반도체", k: "한국기타반도체", cls: "kr", color: "#ec4899" },
+      { label: "글로벌 반도체", k: "글로벌반도체", cls: "ov", color: "var(--ov)" },
     ],
     subtotal: { label: "└ 삼성+하이닉스 합 (위 두 종목 소계)", ks: ["삼성전자", "SK하이닉스"], warnAt: 35,
       warn: (pct) => `⚠ 삼성전자+SK하이닉스가 평가금액의 <b>${pct}%</b> — 단 2개 종목에 대한 집중이 큽니다. 한 종목을 직접 더 사기 전에 이 수치부터 보세요.` },
@@ -1107,10 +1123,10 @@ const SECTOR_PANELS = [
   {
     key: "defense", show: () => SHOW_DEFENSE, weightsKey: "defense_weights", asofKey: "defense_weights_asof", historyKey: "defense_weights_history",
     toggleLabel: "🛡 방산·조선", title: "🛡 방산·조선 집중도 (look-through)", asofTail: "국내 자동",
-    totalLabel: "전체 방산·조선 노출", remainderLabel: "기타", refreshHint: "방산·조선 국내 비중",
+    totalLabel: "전체 방산·조선 노출", remainderLabel: "기타", refreshHint: "방산·조선 국내 비중", centerLabel: "방산·조선",
     buckets: [
-      { label: "방산", k: "방산", cls: "def" },
-      { label: "조선", k: "조선", cls: "def2" },
+      { label: "방산", k: "방산", cls: "def", color: "var(--def)" },
+      { label: "조선", k: "조선", cls: "def2", color: "var(--def2)" },
     ],
     subtotal: { label: "└ 방산+조선 합 (소계)", ks: ["방산", "조선"], warnAt: null },
     note: `막대·%는 모두 <b>전체 평가금액 대비</b>입니다 — 방산·조선 + 기타 = 100%. 방산·조선이 없는 ETF는 0. 비중 추정치는 <code>etf_defense_weights.yaml</code>에서 갱신(국내는 <code>refresh_sector_weights.py</code> 자동). TOP10 기준이라 11위 밖은 누락될 수 있음.`,
@@ -1127,13 +1143,8 @@ function sectorBoxHTML(rows, cfg) {
   const { B, inSector, total } = sectorConcentration(rows, weights, bucketKeys);
   if (!total) return "";
   const p = v => total ? v / total * 100 : 0;
-  const bar = (label, val, cl) => `<div class="wbar-row">
-      <div class="wbar-name" title="${label}">${label}</div>
-      <div class="wbar-track"><div class="wbar-fill ${cl}" style="width:${p(val).toFixed(2)}%"></div></div>
-      <div class="wbar-val"><span class="pct">${p(val).toFixed(1)}%</span><span class="amt">${won(val)}</span></div></div>`;
   const st = cfg.subtotal;
   const sub = st.ks.reduce((s, k) => s + (B[k] || 0), 0);
-  const subRow = `<div class="semi-sub"><span class="cap">${st.label}</span><span class="val">${won(sub)} · <b>${p(sub).toFixed(1)}%</b></span></div>`;
   const warn = (st.warnAt != null && p(sub) >= st.warnAt) ? `<div class="semi-warn">${st.warn(p(sub).toFixed(1))}</div>` : "";
   // 신선도 경고는 '현재' 볼 때만 + 최신 데이터 기준. (과거 날짜를 볼 땐 오래된 스냅샷이 정상이라 경고 X)
   let stale = "";
@@ -1144,18 +1155,26 @@ function sectorBoxHTML(rows, cfg) {
       if (age > 45) stale = `<div class="semi-warn">🕐 비중 데이터가 <b>${age}일</b> 경과(${latestAsof} 기준). <code>python refresh_sector_weights.py</code> 로 ${cfg.refreshHint}를 갱신하세요.</div>`;
     }
   }
-  // 막대 행: 버킷들 + 소계 캡션(소계 마지막 종목 아래) + 잔여(기타) 막대 → 전체 100%.
-  let bars = "";
-  cfg.buckets.forEach(b => {
-    bars += bar(b.label, B[b.k], b.cls);
-    if (st.ks.length && b.k === st.ks[st.ks.length - 1]) bars += subRow;
-  });
-  bars += bar(cfg.remainderLabel, total - inSector, "na");
+  // 도넛: 버킷들 + 잔여(기타) = 100%. 각 슬라이스 색은 설정의 color. (소계는 슬라이스 아님 — 중복이라 범례 캡션으로만)
+  const slices = cfg.buckets.map(b => ({ label: b.label, val: B[b.k], color: b.color }))
+    .concat([{ label: cfg.remainderLabel, val: total - inSector, color: "var(--muted)" }]);
+  let acc = 0; const segs = [];
+  for (const s of slices) {
+    const a0 = total ? acc / total * 100 : 0, a1 = total ? (acc + s.val) / total * 100 : 0;
+    segs.push(`${s.color} ${a0.toFixed(2)}% ${a1.toFixed(2)}%`);
+    acc += s.val;
+  }
+  const pie = `<div class="semi-pie" style="background:conic-gradient(${segs.join(",")})">
+    <div class="semi-pie-hole"><b>${p(inSector).toFixed(1)}%</b><span>${cfg.centerLabel}</span></div></div>`;
+  const legend = slices.map(s =>
+    `<div class="lg"><i style="background:${s.color}"></i><span class="nm">${s.label}</span>
+       <span class="vv"><b>${p(s.val).toFixed(1)}%</b><span class="am">${won(s.val)}</span></span></div>`).join("")
+    + `<div class="lg sub"><span class="nm">${st.label.replace("└ ", "")}</span><span class="vv"><b>${p(sub).toFixed(1)}%</b><span class="am">${won(sub)}</span></span></div>`;
   return `<div class="semi-box">
     <div class="semi-head">${cfg.title}<span class="semi-asof">· ETF 구성 추정 기준 ${asof || "-"} · ${cfg.asofTail}</span></div>
     ${stale}
     <div class="semi-total"><span class="lbl">${cfg.totalLabel}</span><span class="val"><span class="amt2">${won(inSector)}</span><span class="pctbig">${p(inSector).toFixed(1)}%</span></span></div>
-    ${bars}
+    <div class="semi-chart"><div class="semi-pie-wrap">${pie}</div><div class="semi-legend">${legend}</div></div>
     ${warn}
     <div class="semi-note">${cfg.note}</div>
   </div>`;
