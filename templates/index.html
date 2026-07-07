@@ -1205,14 +1205,6 @@ function renderHoldingsByStock(pos, prevPos, d, staleTickers) {
   const dc = dayChange(prevPos, pos, d);
   const active = SECTOR_PANELS.filter(p => p.show());
   let html = `<h2>전체 종목 ${holdingsToggleHTML()}<span class="acc-meta">${won(tVal)} · <span class="${cls(tPl)}">${pct(tRet)}</span></span></h2>`;
-  // --semi/--defense 로 켠 섹터 카드는 토글 없이 항상 표시(플래그 자체가 표시 의사). 비중을 표 위에 먼저.
-  if (active.length) {
-    const cards = [weightBarsHTML(rows, tVal)];
-    for (const p of active) { const box = sectorBoxHTML(rows, p); if (box) cards.push(box); }
-    html += `<div class="charts-grid">${cards.join("")}</div>`;
-  } else {
-    html += weightBarsHTML(rows, tVal);
-  }
   html += `<table>${holdingsThead()}<tbody>`;
   for (const r of rows) {
     if (r.accounts.size > 1) {
@@ -1227,6 +1219,14 @@ function renderHoldingsByStock(pos, prevPos, d, staleTickers) {
     }
   }
   html += holdingsTotalRow(tCost, tVal, dc) + `</tbody></table>`;
+  // 분석 카드(비중 + 섹터)는 표 아래에. --semi/--defense 로 켠 섹터 카드는 토글 없이 항상 표시.
+  if (active.length) {
+    const cards = [weightBarsHTML(rows, tVal)];
+    for (const p of active) { const box = sectorBoxHTML(rows, p); if (box) cards.push(box); }
+    html += `<div class="charts-grid" style="margin-top:18px">${cards.join("")}</div>`;
+  } else {
+    html += weightBarsHTML(rows, tVal);
+  }
   return html;
 }
 
