@@ -3,6 +3,7 @@ transactions.yaml
 history.db
 자산배치_세금전략.md
 HANDOFF.md
+journal/
 
 # 자동 생성: 국내 섹터 비중 + 날짜별 스냅샷(refresh_sector_weights.py 산출물)
 etf_*_weights.auto.yaml
