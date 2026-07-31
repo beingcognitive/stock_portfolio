@@ -191,6 +191,9 @@
   th.sortable:hover { color: var(--txt); }
   th .sort-arrow { font-size: 10px; color: var(--muted); }
   td.name, th.name { text-align: left; white-space: normal; }
+  /* 총액 아래 괄호로 붙는 단가(평균매수가/평균매도가): 같은 셀의 보조 정보라 한 톤 낮춘다 */
+  .cell-sub { display: block; color: var(--muted); font-size: 11px; margin-top: 1px; }
+  th .th-sub { color: var(--muted); opacity: .75; font-weight: 400; }
   .tag { font-size: 11px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--line); color: var(--muted); margin-left: 6px; }
   .tag.sold { border-color: var(--down); color: var(--down); }
   /* 현재가 옆 전일 대비 등락(화살표+%): 셀의 up/down 색상을 그대로 상속받아 표시 */
@@ -597,11 +600,16 @@ function realizedAsOf(dateStr) {
   for (const c of DATA.closed) {
     if (!inFilter(c.account) || c.sell_date > dateStr) continue;
     const cost = c.tranches.reduce((s, t) => s + t.cost, 0);
+    const shares = c.tranches.reduce((s, t) => s + t.shares, 0);
     const buy_date = c.tranches.reduce((m, t) => t.date < m ? t.date : m, c.tranches[0].date);
     const pl = c.proceeds - cost; total += pl;
     accounts[c.account] = (accounts[c.account] || 0) + pl;
+    // 평균단가는 실제 매입원금/실수령액을 수량으로 나눈 값(수수료·세금 반영) →
+    // 평균매도가 / 평균매수가 - 1 이 아래 return_pct 와 정확히 일치한다.
     trades.push({ account: c.account, name: c.name, buy_date, sell_date: c.sell_date,
-      cost, proceeds: c.proceeds, pl, return_pct: cost ? pl / cost * 100 : 0 });
+      shares, cost, proceeds: c.proceeds,
+      avg_buy: shares ? cost / shares : 0, avg_sell: shares ? c.proceeds / shares : 0,
+      pl, return_pct: cost ? pl / cost * 100 : 0 });
   }
   trades.sort((a, b) => b.sell_date.localeCompare(a.sell_date));
   return { total, accounts, trades };
@@ -1238,16 +1246,22 @@ function renderRealized() {
   if (!r.trades.length) { head.style.display = "none"; note.style.display = "none"; document.getElementById("realized").innerHTML = ""; return; }
   head.style.display = ""; note.style.display = "";
   note.innerHTML = `${isToday() ? "" : d + "까지 "}매도/만기 완료 ${r.trades.length}건 · 누적 확정수익 <span class="${cls(r.total)}">${signWon(r.total)}</span>`;
+  // 총액과 평균단가는 같은 사실의 두 표현이라 한 셀에 2줄로 묶는다(윗줄 총액, 아랫줄 괄호 단가).
+  // 평균단가는 '다음에 얼마에 살까'의 기준가로 쓰는 값. 합계 행은 종목이 섞여 단가가 의미 없어 비운다.
+  const amountCell = (total, unit) =>
+    `<td>${won(total)}<span class="cell-sub">(${won(unit)})</span></td>`;
   let html = `<table><thead><tr>
     <th class="name">종목</th><th>계좌</th><th>매수일</th><th>매도일</th>
-    <th>매입금액</th><th>매도금액</th><th>확정수익</th><th>수익률</th>
+    <th title="윗줄 = 매입원금, 아랫줄 = 매입원금 ÷ 수량">매입금액 <span class="th-sub">(평균매수가)</span></th>
+    <th title="윗줄 = 실수령 매도금액, 아랫줄 = 매도금액 ÷ 수량">매도금액 <span class="th-sub">(평균매도가)</span></th>
+    <th>확정수익</th><th>수익률</th>
   </tr></thead><tbody>`;
   for (const t of r.trades) {
     html += `<tr>
       <td class="name">${t.name}</td>
       <td style="text-align:left;color:var(--muted)">${t.account}</td>
       <td>${t.buy_date}</td><td>${t.sell_date}</td>
-      <td>${won(t.cost)}</td><td>${won(t.proceeds)}</td>
+      ${amountCell(t.cost, t.avg_buy)}${amountCell(t.proceeds, t.avg_sell)}
       <td class="${cls(t.pl)}">${signWon(t.pl)}</td>
       <td class="${cls(t.pl)}">${pct(t.return_pct)}</td>
     </tr>`;

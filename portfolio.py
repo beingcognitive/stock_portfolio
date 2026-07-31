@@ -214,12 +214,17 @@ def realized_summary() -> dict:
 
     매입원금 = 회차(tranches)의 cost 합, 매도금액 = proceeds(시트 실제 수령액),
     확정수익 = proceeds - 매입원금.
+
+    평균매수가 = 매입원금 / 총수량, 평균매도가 = 매도금액 / 총수량.
+    시트의 sell_price 대신 proceeds 를 나누는 이유: 수수료·세금까지 반영된 실제 단가라
+    평균매도가 / 평균매수가 - 1 이 아래 수익률과 정확히 같아진다(다음 매수의 기준가로 쓰기 좋게).
     """
     trades = []
     accounts: dict[str, float] = {}
     total = 0.0
     for c in load_closed():
         cost = sum(float(t["cost"]) for t in c["tranches"])
+        shares = sum(float(t["shares"]) for t in c["tranches"])
         proceeds = float(c["proceeds"])
         pl = proceeds - cost
         buy_date = min(str(t["date"]) for t in c["tranches"])
@@ -231,8 +236,11 @@ def realized_summary() -> dict:
                 "name": c["name"],
                 "buy_date": buy_date,
                 "sell_date": str(c["sell_date"]),
+                "shares": shares,
                 "cost": cost,
                 "proceeds": proceeds,
+                "avg_buy": (cost / shares) if shares else 0.0,
+                "avg_sell": (proceeds / shares) if shares else 0.0,
                 "pl": pl,
                 "return_pct": (pl / cost * 100.0) if cost else 0.0,
             }

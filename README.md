@@ -125,6 +125,7 @@ On-screen labels are Korean; below, the English term comes first with the Korean
 현금 (예비) = reserve cash · 총자산 = net worth · 손익 = P/L · 수익률 = return % · 합계 = total ·
 계좌별 / 종목별 = by account / by stock · N계좌 합산 = merged across N accounts · 전일대비 = vs. prior day ·
 확정 수익 (실현) = realized P/L · 매수일 / 매도일 = buy / sell date · 매도금액 = proceeds ·
+평균매수가 / 평균매도가 = avg buy / sell price per share (cost ÷ shares, proceeds ÷ shares) ·
 새로고침 = Refresh · 전체 = All · 현재로 돌아가기 = Back to today.
 (Or just let your browser auto-translate the page.)
 
