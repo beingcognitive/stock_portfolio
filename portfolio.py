@@ -361,8 +361,9 @@ def dataset(prior_prices: dict | None = None, refresh: bool = True) -> dict:
 def equity_curve(start: _dt.date | None = None, end: _dt.date | None = None) -> list[dict]:
     """[start, end] 구간 일별 평가금액/투자원금 곡선.
 
-    각 거래일 D 에서 그날 보유 중인 모든 건(open lots + 매도 전 closed)을
+    각 거래일 D 에서 그날 보유 중인 모든 건(open lots + 매도일 이전 closed)을
     합산한다. 티커가 있으면 실제 종가, 없으면 매수가→매도가 선형 보간.
+    매도일 당일의 closed 건은 실제 매도금액(proceeds)으로 평가한다.
     """
     import pandas as pd
 
@@ -409,6 +410,15 @@ def equity_curve(start: _dt.date | None = None, end: _dt.date | None = None) -> 
         v = ser.iloc[i]
         return None if pd.isna(v) else float(v)
 
+    # 계좌별 매도일. 매도일 당일엔 그 계좌의 '매도 건'만 실제 매도금액으로 남기고, 같은 날의
+    # 입금(cash)·매수(lots / closed 회차)는 다음 거래일부터 반영한다(매도대금이 다음 날 들어와
+    # 그 돈으로 산 것으로 봄). 같은 날 갈아탄 경우 매도금액과 새 종목이 하루 겹쳐 튀지 않게.
+    sell_days = {(c["account"], _as_date(c["sell_date"])) for c in closed}
+
+    def effective_on(acc: str, date, dd: _dt.date) -> bool:
+        date = _as_date(date)
+        return date < dd or (date == dd and (acc, date) not in sell_days)
+
     out = []
     for i, d in enumerate(days):
         dd = _dt.date.fromisoformat(d)
@@ -416,27 +426,33 @@ def equity_curve(start: _dt.date | None = None, end: _dt.date | None = None) -> 
         cost = 0.0
         # open lots
         for lot in lots:
-            if _as_date(lot["date"]) <= dd:
+            if effective_on(lot["account"], lot["date"], dd):
                 shares = float(lot["shares"])
                 cost += shares * float(lot["price"])
                 p = price_on(lot["ticker"], i)
                 value += shares * (p if p is not None else float(lot["price"]))
-        # closed lots: 회차별로 매수일~매도일 직전까지만 보유 (매도일 당일은 현금화).
-        # 같은 날 전 종목을 팔면 그날 곡선이 푹 꺼지는데 이는 실제 현금화를 반영한 것.
+        # closed lots: 회차별로 매수일~매도일까지 보유. 매도일 '당일'은 종가 대신 실제 매도금액
+        # (proceeds)으로 평가해 판 날의 손익이 그날 점으로 남고, 현금화는 다음 거래일부터
+        # (그 뒤엔 곡선에서 빠진다). 같은 날 전 종목을 팔면 다음 날 곡선이 푹 꺼지는데
+        # 이는 실제 현금화를 반영한 것. 프런트(templates/index.html closedStateOn)와 같은 규칙.
         for c in closed:
             sd = _as_date(c["sell_date"])
-            if dd >= sd:
+            if dd > sd:
+                continue
+            if dd == sd:
+                cost += sum(float(tr["cost"]) for tr in c["tranches"] if _as_date(tr["date"]) <= dd)
+                value += float(c["proceeds"])
                 continue
             p = price_on(c["ticker"], i)
             for tr in c["tranches"]:
-                if _as_date(tr["date"]) <= dd:
+                if effective_on(c["account"], tr["date"], dd):
                     shares = float(tr["shares"])
                     tcost = float(tr["cost"])
                     cost += tcost
                     fallback = tcost / shares if shares else 0.0
                     value += shares * (p if p is not None else fallback)
         cash_amt = sum(
-            float(cc["amount"]) for cc in cash if _as_date(cc["date"]) <= dd
+            float(cc["amount"]) for cc in cash if effective_on(cc["account"], cc["date"], dd)
         )
         if value > 0 or cash_amt > 0:
             out.append({

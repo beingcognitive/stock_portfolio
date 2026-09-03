@@ -424,6 +424,7 @@ async function reload(force = false) {
     return;
   }
   DAYIDX = {}; DAYS.forEach((d, i) => DAYIDX[d] = i);
+  SELL_DAYS = new Set(DATA.closed.map(c => c.account + "|" + c.sell_date));
   // 티커별 forward-fill 가격 배열 (거래일 그리드 정렬)
   FFILL = {};
   for (const tk in DATA.prices) {
@@ -474,11 +475,12 @@ function prevTradingDay(dateStr) {
 
 // 종목 종가가 '직전 거래일 종가' 대비 등락 → {cls, arrow:'▲'/'▼'/'', pct}.
 //   heldPrev === false (직전 거래일 미보유 = 당일 신규매수)면 화살표 숨김 → 합계 교집합과 일관.
-function priceDayMove(tk, dateStr, heldPrev) {
+//   curOverride: 매도일 당일 행은 종가 대신 실제 평균매도가를 넘겨 '전일 종가 → 판 가격'의 등락을 보인다.
+function priceDayMove(tk, dateStr, heldPrev, curOverride) {
   if (heldPrev === false) return { cls: "", arrow: "", pct: null };
   const prevDay = prevTradingDay(dateStr);
   if (!prevDay) return { cls: "", arrow: "", pct: null };
-  const cur = priceOn(tk, dateStr), prev = priceOn(tk, prevDay);
+  const cur = curOverride != null ? curOverride : priceOn(tk, dateStr), prev = priceOn(tk, prevDay);
   if (cur == null || prev == null || prev <= 0) return { cls: "", arrow: "", pct: null };
   const chg = (cur - prev) / prev * 100;
   if (cur > prev) return { cls: "up", arrow: "▲", pct: chg };
@@ -488,16 +490,17 @@ function priceDayMove(tk, dateStr, heldPrev) {
 
 // 정렬용 일일 등락률(전일대비 %). 표시용 priceDayMove 와 달리 보합은 0 으로 반환하고,
 // 직전 거래일 미보유/데이터 없음만 null(정렬 시 맨 아래로). 행에 r.daymove 로 붙인다.
-function dayMovePct(tk, dateStr, heldPrev) {
+function dayMovePct(tk, dateStr, heldPrev, curOverride) {
   if (heldPrev === false) return null;
   const prevDay = prevTradingDay(dateStr);
   if (!prevDay) return null;
-  const cur = priceOn(tk, dateStr), prev = priceOn(tk, prevDay);
+  const cur = curOverride != null ? curOverride : priceOn(tk, dateStr), prev = priceOn(tk, prevDay);
   if (cur == null || prev == null || prev <= 0) return null;
   return (cur - prev) / prev * 100;
 }
 function annotateDayMove(rows, dateStr, prevHeld) {
-  for (const r of rows) r.daymove = dayMovePct(r.ticker, dateStr, prevHeld.has(r.ticker));
+  for (const r of rows)
+    r.daymove = dayMovePct(r.ticker, dateStr, prevHeld.has(r.ticker), r.sold ? r.price : undefined);
   return rows;
 }
 
@@ -505,22 +508,33 @@ function annotateDayMove(rows, dateStr, prevHeld) {
 //   '연속 보유 수량 min(전일, 당일)'으로 직전→당일 종가 재평가한다. 당일 매수분(전일 미보유)과
 //   매도분(당일 미보유)을 대칭으로 제외해, 현금흐름이 아닌 순수 가격 변동만 잡는다.
 //   prevRows = 직전 거래일 보유, todayRows = 당일 보유 (둘 다 positionsOnDate 산출, 필터 적용됨).
+//   매도일 당일: 그날 판 수량(sold 행)은 종가가 아닌 '실제 평균매도가'로 재평가한다 → 변량이
+//   '전일 종가 → 실제 판 가격'을 반영. 같은 키에 보유분(종가)과 매도분(매도가)이 나뉘어 올 수 있어
+//   (부분 매도) 당일 행을 리스트로 묶고, 전일의 연속 수량을 그 순서대로 배분한다.
+//   전일 행이 매도분(sold)이면 이미 현금화된 것이라 당일과 연속되지 않으므로 제외.
 function dayChange(prevRows, todayRows, dateStr) {
   const prevDay = prevTradingDay(dateStr);
   if (!prevDay) return null;
-  const todayShares = {};
-  for (const r of todayRows) todayShares[r.account + "|" + r.ticker] = r.shares;
+  const today = {};
+  for (const r of todayRows) (today[r.account + "|" + r.ticker] ??= []).push(r);
   let chg = 0, prevVal = 0, any = false;
   for (const r of prevRows) {
-    const ts = todayShares[r.account + "|" + r.ticker];
-    if (ts == null) continue;                  // 당일 미보유(전량/부분 매도된 키) → 제외
-    const shares = Math.min(r.shares, ts);      // 연속 보유 수량
-    if (shares <= 0) continue;
-    const cur = priceOn(r.ticker, dateStr), prev = priceOn(r.ticker, prevDay);
-    if (cur == null || prev == null || prev <= 0) continue;
-    chg += shares * (cur - prev);
-    prevVal += shares * prev;
-    any = true;
+    if (r.sold) continue;                       // 전일에 판 분량 → 당일엔 없음
+    const rows = today[r.account + "|" + r.ticker];
+    if (!rows) continue;                        // 당일 미보유(전량 매도된 키) → 제외
+    const prev = priceOn(r.ticker, prevDay);
+    if (prev == null || prev <= 0) continue;
+    let remain = r.shares;                      // 연속 보유 수량 = min(전일, 당일) 을 당일 행 순서대로 배분
+    for (const t of rows) {
+      const n = Math.min(remain, t.shares);
+      if (n <= 0) break;
+      remain -= n;
+      const cur = t.sold ? t.price : priceOn(r.ticker, dateStr);
+      if (cur == null) continue;
+      chg += n * (cur - prev);
+      prevVal += n * prev;
+      any = true;
+    }
   }
   if (!any || prevVal <= 0) return null;
   return { chg, pct: chg / prevVal * 100 };
@@ -534,71 +548,108 @@ const dayChangeWon = dc => !dc ? "" : `(${signWon(dc.chg)})`;  // 화살표는 %
 const dayChangePct = dc => !dc ? "" : `(${dayArrow(dc)}${pct(dc.pct)})`;
 const dayChangeCls = dc => !dc ? "" : dc.chg > 0 ? "up" : dc.chg < 0 ? "down" : "";
 
-// 특정일에 보유 중이던 포지션 목록 (계좌 필터 적용)
+// 매도 건 c 의 거래일 dateStr 기준 상태.
+//   'held' = 매도 전(종가 평가) · 'sold' = 매도일 당일 · null = 매도 후(현금화되어 곡선/표에서 빠짐).
+//   매도일 '당일'은 아직 곡선/표에 남겨 두되, 종가가 아닌 '실제 매도금액(proceeds)'으로 평가한다.
+//   그래야 판 날의 손익(예: -0.9%)이 그날 점으로 찍혀서 남고, 직전일의 +수익 점만 보고
+//   '늘 수익만 났다'는 착각을 막는다. 현금화는 다음 거래일부터로 본다.
+//   (매도일이 거래일 그리드에 없으면 당일 점은 생략되고 바로 빠진다.)
+function closedStateOn(c, dateStr) {
+  if (dateStr < c.sell_date) return "held";
+  return dateStr === c.sell_date ? "sold" : null;
+}
+
+// 계좌별 매도일 집합("계좌|날짜", reload 에서 채움). 매도일 당일엔 그 계좌의 '매도 건'만 실제
+//   매도금액으로 남기고, 같은 날 그 계좌의 입금(cash)·매수(lots / closed 회차)는 다음 거래일부터
+//   반영한다 — 매도대금이 다음 날 들어오고 그 돈으로 샀다고 보는 것. 그래야 같은 날 갈아탄
+//   (매도→매수) 경우나 매도대금 입금 기록이 매도일에 매도금액과 하루 겹쳐 2배로 튀지 않는다.
+let SELL_DAYS = new Set();
+// 매수/입금 기록(계좌 acc, 날짜 date)이 거래일 dateStr 에 반영되는지.
+const effectiveOn = (acc, date, dateStr) =>
+  date < dateStr || (date === dateStr && !SELL_DAYS.has(acc + "|" + date));
+
+// 특정일에 보유 중이던 포지션 목록 (계좌 필터 적용).
+//   매도일 당일 분량은 sold=true 인 별도 행으로 둔다(같은 계좌·종목의 잔여 보유분과 섞지 않음).
+//   sold 행의 price = 평균매도가(매도금액 ÷ 수량), value = 실제 매도금액.
 function positionsOnDate(dateStr) {
   const agg = {};
-  const add = (acc, name, ticker, region, shares, cost, value) => {
-    const k = acc + "|" + ticker;
-    if (!agg[k]) agg[k] = { account: acc, name, ticker, region, shares: 0, cost: 0, value: 0 };
+  const add = (acc, name, ticker, region, shares, cost, value, sold = false) => {
+    const k = acc + "|" + ticker + (sold ? "|sold" : "");
+    if (!agg[k]) agg[k] = { account: acc, name, ticker, region, shares: 0, cost: 0, value: 0, sold };
     agg[k].shares += shares; agg[k].cost += cost; agg[k].value += value;
   };
   for (const l of DATA.lots) {
-    if (!inFilter(l.account) || l.date > dateStr) continue;
+    if (!inFilter(l.account) || !effectiveOn(l.account, l.date, dateStr)) continue;
     const p = priceOn(l.ticker, dateStr);
     add(l.account, l.name, l.ticker, l.region, l.shares, l.shares * l.price,
         l.shares * (p != null ? p : l.price));
   }
   for (const c of DATA.closed) {
-    if (!inFilter(c.account) || dateStr >= c.sell_date) continue;
+    if (!inFilter(c.account)) continue;
+    const st = closedStateOn(c, dateStr);
+    if (!st) continue;
+    const sold = st === "sold";
     const p = priceOn(c.ticker, dateStr);
+    // 매도일 당일: 실제 매도금액을 회차 수량 비례로 나눠 담는다(합 = proceeds). 이때는 회차 전부가
+    //   '판 것'이므로 당일 매수 회차도 포함(effectiveOn 미적용).
+    const tot = c.tranches.reduce((s, t) => s + t.shares, 0);
     for (const tr of c.tranches) {
-      if (tr.date > dateStr) continue;
+      if (sold ? tr.date > dateStr : !effectiveOn(c.account, tr.date, dateStr)) continue;
       const fb = tr.shares ? tr.cost / tr.shares : 0;
-      add(c.account, c.name, c.ticker, c.region, tr.shares, tr.cost,
-          tr.shares * (p != null ? p : fb));
+      const value = sold ? (tot ? c.proceeds * tr.shares / tot : 0)
+                         : tr.shares * (p != null ? p : fb);
+      add(c.account, c.name, c.ticker, c.region, tr.shares, tr.cost, value, sold);
     }
   }
   const rows = Object.values(agg).map(r => ({
     ...r, avg_price: r.shares ? r.cost / r.shares : 0,
     price: r.shares ? r.value / r.shares : 0,
     pl: r.value - r.cost, return_pct: r.cost ? (r.value - r.cost) / r.cost * 100 : 0,
-    sold: false,
   }));
   return rows;
 }
 
 function accountValueOnDate(acc, dateStr) {
   let v = 0;
-  for (const l of DATA.lots) if (l.account === acc && l.date <= dateStr) {
+  for (const l of DATA.lots) if (l.account === acc && effectiveOn(acc, l.date, dateStr)) {
     const p = priceOn(l.ticker, dateStr); v += l.shares * (p != null ? p : l.price);
   }
-  for (const c of DATA.closed) if (c.account === acc && dateStr < c.sell_date) {
+  for (const c of DATA.closed) if (c.account === acc) {
+    const st = closedStateOn(c, dateStr);
+    if (!st) continue;
+    if (st === "sold") { v += c.proceeds; continue; }   // 매도일 당일 = 실제 매도금액
     const p = priceOn(c.ticker, dateStr);
-    for (const tr of c.tranches) if (tr.date <= dateStr) {
+    for (const tr of c.tranches) if (effectiveOn(acc, tr.date, dateStr)) {
       const fb = tr.shares ? tr.cost / tr.shares : 0;
       v += tr.shares * (p != null ? p : fb);
     }
   }
-  for (const c of (DATA.cash || [])) if (c.account === acc && c.date <= dateStr) v += c.amount;
+  for (const c of (DATA.cash || [])) if (c.account === acc && effectiveOn(acc, c.date, dateStr)) v += c.amount;
   return v;
 }
 
 // 기준일까지 누적된 현금(예비). 예비현금은 별도 현금 전용 계좌(케이뱅크 등)에 있어
 // 종목 계좌 필터로는 고를 수 없으므로, 계좌 필터와 무관한 '보편 잔액'으로 항상 전액을 더한다.
+// 매도일 당일의 같은 계좌 입금(매도대금 기록)은 다음 거래일부터 잡는다(effectiveOn).
 function cashOnDate(dateStr) {
   let v = 0;
   for (const c of (DATA.cash || [])) {
-    if (c.date > dateStr) continue;
+    if (!effectiveOn(c.account, c.date, dateStr)) continue;
     v += c.amount;
   }
   return v;
 }
 
-// 기준일까지의 확정수익 (계좌 필터 적용)
+// 기준일까지의 확정수익 (계좌 필터 적용).
+//   매도일 당일은 그 건이 아직 보유 표/곡선에 sold 행으로 남아 있으므로(closedStateOn) 여기선 제외해
+//   같은 손익이 평가손익과 확정수익에 이중으로 잡히지 않게 한다 → 다음 거래일부터 확정수익으로 이동.
+//   soldToday = 그렇게 미뤄진 당일 매도 건수(안내용).
 function realizedAsOf(dateStr) {
-  const trades = []; const accounts = {}; let total = 0;
+  const trades = []; const accounts = {}; let total = 0, soldToday = 0;
   for (const c of DATA.closed) {
-    if (!inFilter(c.account) || c.sell_date > dateStr) continue;
+    if (!inFilter(c.account)) continue;
+    if (c.sell_date === dateStr) { soldToday++; continue; }
+    if (c.sell_date > dateStr) continue;
     const cost = c.tranches.reduce((s, t) => s + t.cost, 0);
     const shares = c.tranches.reduce((s, t) => s + t.shares, 0);
     const buy_date = c.tranches.reduce((m, t) => t.date < m ? t.date : m, c.tranches[0].date);
@@ -612,7 +663,7 @@ function realizedAsOf(dateStr) {
       pl, return_pct: cost ? pl / cost * 100 : 0 });
   }
   trades.sort((a, b) => b.sell_date.localeCompare(a.sell_date));
-  return { total, accounts, trades };
+  return { total, accounts, trades, soldToday };
 }
 
 // ---- 렌더 ----
@@ -625,9 +676,9 @@ function renderAll() { renderSummary(); renderYearSel(); renderChart(); renderAc
 function availableYears() {
   const held = d => {
     for (const l of DATA.lots)
-      if (inFilter(l.account) && l.date <= d) return true;
+      if (inFilter(l.account) && effectiveOn(l.account, l.date, d)) return true;
     for (const c of DATA.closed)
-      if (inFilter(c.account) && d < c.sell_date)
+      if (inFilter(c.account) && closedStateOn(c, d))
         for (const tr of c.tranches) if (tr.date <= d) return true;
     return false;
   };
@@ -683,7 +734,8 @@ function renderSummary() {
   // 핵심 강조는 '평가금액'(주식). 현금은 부가 정보로 총자산에 합산만 한다.
   const valLabel = isToday() ? "평가금액" : "평가금액 (" + d + ")";
   // 평가이익 노드: 1줄 = 금액 · 수익률, 2줄 = 오늘자 변량(아래 합계 라인과 동일 포맷).
-  const plLabel = pl >= 0 ? "평가이익 (미실현)" : "평가손실 (미실현)";
+  // 매도일 당일엔 sold 행(실제 매도금액)이 섞이므로 '미실현'이라 쓰지 않는다.
+  const plLabel = (pl >= 0 ? "평가이익" : "평가손실") + (pos.some(p => p.sold) ? " (매도분 포함)" : " (미실현)");
   const plOp = `<div class="flow-op"><span class="oplabel">${plLabel}</span>`
     + `<span class="opval ${cls(pl)} big">${signWon(pl)} <span class="op-sub">· ${pct(ret)}</span></span>`
     + (dc ? `<span class="op-day ${dayChangeCls(dc)}"><span class="day-lbl">전일대비</span> ${dayChangeText(dc)}</span>` : "")
@@ -826,7 +878,8 @@ const selDatePlugin = {
 
 function renderChart() {
   // 전 구간을 계산한 뒤, 앞뒤의 빈(0) 구간만 잘라낸다.
-  // 중간의 0 일(전량 매도해 현금화한 날)은 그대로 둬서 딥이 보이게 한다.
+  // 중간의 0 일(전량 매도 다음 거래일부터 현금화되어 비는 날)은 그대로 둬서 딥이 보이게 한다.
+  // 매도일 당일은 실제 매도금액으로 찍힌다(positionsOnDate) → 판 날의 손익이 곡선에 남는다.
   const rawD = [], rawV = [], rawC = [], rawCash = [];
   for (const d of DAYS) {
     if (selectedYear && d.slice(0, 4) !== selectedYear) continue;
@@ -910,7 +963,7 @@ function renderChart() {
   if (chart) { chart.data = data; chart.options = opts; chart.update(); }
   else chart = new Chart(document.getElementById("chart"), { type: "line", data, options: opts, plugins: [selDatePlugin] });
   document.getElementById("chartHint").textContent =
-    `${labels[0]} ~ ${labels[labels.length - 1]} · ${labels.length} 거래일 · 그래프의 점을 클릭하면 그날 보유 내역을 봅니다 (매도 종목은 보유 기간만 반영)`;
+    `${labels[0]} ~ ${labels[labels.length - 1]} · ${labels.length} 거래일 · 그래프의 점을 클릭하면 그날 보유 내역을 봅니다 (매도 종목은 매도일까지 반영 · 매도일 당일은 실제 매도금액)`;
 }
 
 function renderAsofBar() {
@@ -973,18 +1026,23 @@ const holdingsThead = () => `<thead><tr>
 </tr></thead>`;
 
 // 한 종목 행. nameExtra: 이름 옆 추가 태그(종목별 보기의 '계좌 합산' 등). trAttrs: <tr> 추가 속성.
+// sold 행(매도일 당일): 종목명 옆 '매도' 태그, 현재가 칸은 실제 평균매도가(종가 신선도 판정 불필요),
+//   등락 화살표는 '전일 종가 → 매도가'.
 function holdingRow(r, d, prevHeld, staleTickers, nameExtra = "", trAttrs = "") {
-  const mv = priceDayMove(r.ticker, d, prevHeld.has(r.ticker));
-  const stale = staleAsOf(r.ticker, d);
+  const mv = priceDayMove(r.ticker, d, prevHeld.has(r.ticker), r.sold ? r.price : undefined);
+  const stale = r.sold ? null : staleAsOf(r.ticker, d);
   if (stale) staleTickers.add(r.ticker);
   const staleTag = stale
     ? `<span class="stale-flag" title="${d} 종가가 아직 데이터 소스에 없어 ${stale} 종가를 표시 중입니다. 새로고침해도 소스에 해당일 봉이 없으면 그대로일 수 있습니다.">⚠ ${mdLabel(stale)} 종가</span>`
     : "";
+  const soldTag = r.sold
+    ? `<span class="tag sold" title="${d} 매도 — 이 행은 종가가 아닌 실제 매도금액(수수료·세금 반영)으로 평가합니다. 다음 거래일부터 확정수익으로 이동.">매도</span>`
+    : "";
   return `<tr ${trAttrs}>
-    <td class="name">${r.name}<span class="tag">${r.region}</span>${nameExtra}</td>
+    <td class="name">${r.name}<span class="tag">${r.region}</span>${soldTag}${nameExtra}</td>
     <td>${Math.round(r.shares).toLocaleString()}</td>
     <td>${won(r.avg_price)}</td>
-    <td>${won(r.price)}${staleTag}<span class="dir ${mv.cls}">${mv.arrow}${mv.pct != null ? " " + pct(mv.pct) : ""}</span></td>
+    <td${r.sold ? ' title="평균매도가 (매도금액 ÷ 수량)"' : ""}>${won(r.price)}${staleTag}<span class="dir ${mv.cls}">${mv.arrow}${mv.pct != null ? " " + pct(mv.pct) : ""}</span></td>
     <td>${won(r.cost)}</td>
     <td>${won(r.value)}</td>
     <td class="${cls(r.pl)}">${signWon(r.pl)}</td>
@@ -995,7 +1053,7 @@ function holdingRow(r, d, prevHeld, staleTickers, nameExtra = "", trAttrs = "") 
 // 펼친 계좌별 하위 행(종목별 보기). 종목 칸엔 계좌명, 나머지는 그 계좌 보유분.
 function holdingSubRow(p) {
   return `<tr class="sub">
-    <td class="name">${p.account}</td>
+    <td class="name">${p.account}${p.sold ? '<span class="tag sold">매도</span>' : ""}</td>
     <td>${Math.round(p.shares).toLocaleString()}</td>
     <td>${won(p.avg_price)}</td>
     <td>${won(p.price)}</td>
@@ -1196,7 +1254,8 @@ function sectorBoxHTML(rows, cfg) {
 function renderHoldingsByStock(pos, prevPos, d, staleTickers) {
   const agg = {};
   for (const p of pos) {
-    const b = agg[p.ticker] ??= { name: p.name, ticker: p.ticker, region: p.region,
+    const k = p.ticker + (p.sold ? "|sold" : "");   // 매도일 당일 분량은 보유분과 합치지 않는다
+    const b = agg[k] ??= { key: k, name: p.name, ticker: p.ticker, region: p.region, sold: !!p.sold,
       shares: 0, cost: 0, value: 0, accounts: new Set(), parts: [] };
     b.shares += p.shares; b.cost += p.cost; b.value += p.value;
     b.accounts.add(p.account); b.parts.push(p);
@@ -1217,10 +1276,10 @@ function renderHoldingsByStock(pos, prevPos, d, staleTickers) {
   for (const r of rows) {
     if (r.accounts.size > 1) {
       // 여러 계좌 합산 → 클릭하면 계좌별 내역 펼침. 셰브론으로 펼침 상태 표시.
-      const exp = expandedStocks.has(r.ticker);
+      const exp = expandedStocks.has(r.key);
       const tag = `<span class="tag merged"><span class="exp-chev${exp ? " open" : ""}">▸</span>${r.accounts.size}계좌 합산</span>`;
       html += holdingRow(r, d, prevHeld, staleTickers, tag,
-        `class="merged-row" onclick="toggleStock('${r.ticker}')"`);
+        `class="merged-row" onclick="toggleStock('${r.key}')"`);
       if (exp) for (const p of sortHoldings(r.parts)) html += holdingSubRow(p);
     } else {
       html += holdingRow(r, d, prevHeld, staleTickers);
@@ -1245,7 +1304,10 @@ function renderRealized() {
   const note = document.getElementById("realizedNote");
   if (!r.trades.length) { head.style.display = "none"; note.style.display = "none"; document.getElementById("realized").innerHTML = ""; return; }
   head.style.display = ""; note.style.display = "";
-  note.innerHTML = `${isToday() ? "" : d + "까지 "}매도/만기 완료 ${r.trades.length}건 · 누적 확정수익 <span class="${cls(r.total)}">${signWon(r.total)}</span>`;
+  const pending = r.soldToday
+    ? ` · ${isToday() ? "오늘" : d} 매도 ${r.soldToday}건은 보유 표에 <span class="tag sold">매도</span>로 표시, 다음 거래일부터 여기 반영`
+    : "";
+  note.innerHTML = `${isToday() ? "" : d + "까지 "}매도/만기 완료 ${r.trades.length}건 · 누적 확정수익 <span class="${cls(r.total)}">${signWon(r.total)}</span>${pending}`;
   // 총액과 평균단가는 같은 사실의 두 표현이라 한 셀에 2줄로 묶는다(윗줄 총액, 아랫줄 괄호 단가).
   // 평균단가는 '다음에 얼마에 살까'의 기준가로 쓰는 값. 합계 행은 종목이 섞여 단가가 의미 없어 비운다.
   const amountCell = (total, unit) =>

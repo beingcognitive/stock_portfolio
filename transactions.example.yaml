@@ -16,7 +16,8 @@
 # closed 필드 : account, name, ticker, krx_code, region, sell_date,
 #               proceeds(매도금액), sell_price, tranches:[{date, shares, cost}]
 #   * 매입원금 = tranches 의 cost 합 / 확정수익 = proceeds - 매입원금
-#   * 보유 기간 평가 = 회차 수량 × 해당일 종가
+#   * 보유 기간 평가 = 회차 수량 × 해당일 종가 / 매도일 당일 = proceeds(실제 매도금액), 다음 거래일부터 현금화
+#   * 매도일 당일 같은 계좌의 입금(cash)·매수(lots)는 다음 거래일부터 반영 (같은 날 갈아타도 하루 겹치지 않음)
 #
 # ticker: 야후 파이낸스 심볼(KRX 6자리 + ".KS"). krx_code: pykrx 조회용 6자리.
 # ===========================================================================

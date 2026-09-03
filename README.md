@@ -190,7 +190,9 @@ This file is personal, so it's excluded from the repo via `.gitignore`.
 - `closed` : completed sells (or expiries). Grouped per ticker, but each buy **tranche** is kept by
   date. That way the cost-basis curve accrues at each tranche's actual buy date (not pulled forward),
   and the held-period valuation uses the tranche's shares. Realized P/L = `proceeds` (the actual sale
-  amount) − sum of tranche costs.
+  amount) − sum of tranche costs. On the **sell date itself** the position is still shown on the chart
+  and in the holdings table (tagged 매도), valued at `proceeds` instead of the close; it moves to
+  realized P/L from the next trading day.
 - `cash` (optional) : reserve cash outside your investments. Kept out of cost basis / market value /
   return %, and only added into **net worth (market value + cash)** and the asset flow. Recorded by
   date, so moving cash into a position reconciles automatically: one negative `amount` line + one buy
@@ -268,7 +270,15 @@ simply doesn't render if its file is missing.
   per ticker but keep their buy **tranches** by date/shares/amount.
 - **What "cost basis" (투자원금) means** : the summed buy cost of positions held *on that day*. It rises
   at each tranche's buy date and falls when you sell (the gain moves to realized P/L). So it's the cost
-  of *current* holdings, not cumulative deposits — which is why it drops on a sell day.
+  of *current* holdings, not cumulative deposits — which is why it drops the trading day after a sell.
+- **The sell day shows the real exit** : on the sell date the closed position is still drawn, but at
+  the actual `proceeds` (fees and tax included) rather than the close, and the holdings table tags it
+  매도 with the average sell price. Cash is treated as arriving the next trading day, which is when the
+  trade moves into realized P/L. This keeps the gain or loss you actually locked in as a visible point
+  on the curve — otherwise a sale at a loss right after an up day leaves only the up day on the chart,
+  and it starts to look like you only ever took profits. Anything else dated that same day in the same
+  account — a `cash` line for the sale proceeds, a new `lot` bought with them — also counts from the
+  next trading day, so a same-day switch never shows the sale amount and the new position together.
 - **Tranche split avoids pull-forward** : lumping a closed position into one block (full amount at the
   first buy date) pulls cost basis earlier than reality and distorts the start of the curve. Splitting
   by tranche accrues it at the real buy dates.
